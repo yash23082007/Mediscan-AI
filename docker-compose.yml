@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: medical_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: medical_diagnosis
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # Node.js Backend Server
+  # ============================================
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: medical_server
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: medical_diagnosis
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-postgres123}
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-postgres123}@postgres:5432/medical_diagnosis
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev_access_secret_change_in_prod}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_refresh_secret_change_in_prod}
+      JWT_ACCESS_EXPIRY: 15m
+      JWT_REFRESH_EXPIRY: 7d
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      AI_ENGINE_URL: http://ai-engine:5000
+      CORS_ORIGIN: http://localhost:3000
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./server/src:/app/src
+
+  # ============================================
+  # Python Flask AI Engine
+  # ============================================
+  ai-engine:
+    build:
+      context: ./ai-engine
+      dockerfile: Dockerfile
+    container_name: medical_ai
+    restart: unless-stopped
+    environment:
+      FLASK_ENV: development
+      FLASK_PORT: 5000
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-postgres123}@postgres:5432/medical_diagnosis
+      AI_API_KEY: ${AI_ENGINE_API_KEY:-dev_ai_key}
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./ai-engine:/app
+      - ai_models:/app/saved_models
+
+  # ============================================
+  # Next.js Frontend (Dev Server)
+  # ============================================
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: medical_client
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001/api
+      NEXT_PUBLIC_AI_ENGINE_URL: http://localhost:5000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - server
+    volumes:
+      - ./client/src:/app/src
+      - ./client/public:/app/public
+
+volumes:
+  postgres_data:
+  ai_models:
