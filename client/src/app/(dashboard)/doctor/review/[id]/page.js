@@ -33,7 +33,7 @@ export default function ReviewPage() {
     loadSubmission()
   }, [id])
 
-  const loadSubmission = async () => {
+  async function loadSubmission() {
     try {
       const res = await authFetch(`/doctors/submissions/${id}`)
       const data = await res.json()

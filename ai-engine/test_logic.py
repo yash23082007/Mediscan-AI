@@ -60,7 +60,7 @@ class TestAIEngine(unittest.TestCase):
 
         tips = self.explainer.get_preventive_tips([{'condition_key': 'flu'}])
         self.assertTrue(len(tips) > 0)
-        self.assertIn('title', tips[0])
+        self.assertIsInstance(tips[0], str)
 
 if __name__ == '__main__':
     unittest.main()
