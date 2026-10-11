@@ -1,282 +1,340 @@
-<div align="center">
-  <img src="https://raw.githubusercontent.com/yash23082007/Althea-AI/main/assets/althea-logo.png" alt="Althea AI Logo" width="120" />
+# Althea AI
 
-  <h1>Althea AI</h1>
-  <h3>The Next-Generation Medical Diagnostic Intelligence Platform</h3>
-
-  <p>
-    <strong>A production-grade, highly secure, and explainable AI diagnostic system.</strong><br/>
-    Bridging the gap between patient symptoms and precise clinical triage through an adaptive decision-tree engine, Explainable AI (XAI), and continuous physician oversight.
-  </p>
-
-  <p>
-    <a href="https://github.com/yash23082007/Althea-AI/issues"><img src="https://img.shields.io/github/issues/yash23082007/Althea-AI" alt="Issues" /></a>
-    <a href="https://github.com/yash23082007/Althea-AI/network/members"><img src="https://img.shields.io/github/forks/yash23082007/Althea-AI" alt="Forks" /></a>
-    <a href="https://github.com/yash23082007/Althea-AI/stargazers"><img src="https://img.shields.io/github/stars/yash23082007/Althea-AI" alt="Stars" /></a>
-    <a href="https://github.com/yash23082007/Althea-AI/blob/main/LICENSE"><img src="https://img.shields.io/github/license/yash23082007/Althea-AI" alt="License" /></a>
-  </p>
-</div>
+Clinical decision support system and diagnostic triage platform built with Next.js, Express, and a Python Random Forest classification service.
 
 ---
 
-## ⚠️ Important Medical Disclaimer
+## Medical Disclaimer
 
-**Althea AI is designed for informational, educational, and preliminary triage purposes only. It does not constitute professional medical advice, diagnosis, or treatment.**
-- Always seek the advice of a physician or other qualified health provider with any questions you may have regarding a medical condition.
-- Never disregard professional medical advice or delay seeking it because of something you have read or received from this application.
-- If you think you may have a medical emergency, call your local emergency services immediately.
+Althea AI is an experimental decision-support tool designed for preliminary triage, research, and technical demonstration. It does not provide medical diagnoses, clinical treatment plans, or emergency services. Consult a qualified healthcare professional for medical concerns. In an emergency, contact local emergency services immediately.
 
 ---
 
-## 🌟 Vision & Overview
+## Overview
 
-**Althea AI** was built to solve the black-box problem in medical AI. While generic symptom checkers present endless checklists, Althea AI adapts to the patient's specific presentation through dynamic decision trees, analyzes the data using a Random Forest model, and most importantly—**explains its reasoning** using feature attribution (XAI). 
+Althea AI connects symptom intake questionnaires to a machine learning classifier and a doctor review workflow:
 
-Every prediction is presented alongside a clear explanation of *why* the AI arrived at that conclusion, and is subsequently routed to a licensed physician for review, creating a continuous feedback loop that prevents over-diagnosis and ensures clinical sanity.
-
----
-
-## 🚀 Key Features
-
-### 1. Explainable AI (XAI) Engine
-- **No Black Boxes**: Utilizes a SHAP-inspired explainer module to quantify the exact weight of each symptom contributing to a diagnosis.
-- **Adaptive Questionnaire**: A Bayesian decision-tree approach that dynamically alters the line of questioning based on prior answers, reducing consultation time to 3-4 minutes.
-- **Top-N Differential Diagnoses**: Returns the top 3 most likely conditions along with confidence intervals.
-
-### 2. Clinical Oversight (Doctor-in-the-Loop)
-- **Physician Dashboard**: Clinicians can log in, review patient-submitted assessments, and inspect the AI's symptom vectors.
-- **Algorithmic Calibration**: Doctors can approve, modify, or override AI predictions. This feedback is securely logged for future model retraining.
-- **Triage Prioritization**: Automatically flags high-risk combinations (e.g., chest pain + shortness of breath) for urgent review.
-
-### 3. Enterprise-Grade Security & HIPAA Readiness
-- **AES-256-GCM Encryption**: All patient Personally Identifiable Information (PII) and sensitive health records are encrypted at rest at the application layer before hitting the database.
-- **Immutable Audit Trails**: A PostgreSQL trigger-enforced append-only audit log records every action (who accessed what, when, and from where). No `UPDATE` or `DELETE` allowed.
-- **Role-Based Access Control (RBAC)**: Strict separation between `patient`, `doctor`, and `admin` roles, enforced via stateless JWT tokens and robust Express middleware.
-
-### 4. Ultra-Premium UI/UX
-- **Glassmorphic Dark Mode**: A stunning, high-contrast dark mode aesthetic using inter/outfit typography, neon accents, and smooth micro-animations.
-- **Responsive Next.js 16 App**: Built on the cutting-edge App Router for maximum performance, SEO optimization, and seamless client-side routing.
+1. **Questionnaire**: An adaptive questionnaire guides patients through symptom assessment based on decision-tree routing.
+2. **Classification**: Patient responses are evaluated by a Random Forest model trained on a standard clinical dataset (4,920 records across 132 symptoms and 41 disease classes).
+3. **Differential Diagnosis & Feature Attribution**: The model returns the top 3 candidate conditions with confidence scores and symptom contribution weights.
+4. **Physician Review**: Submissions enter a doctor review queue where clinical staff can review predictions, record notes, and approve or override classifications.
+5. **Security**: Field-level AES-256-GCM encryption for patient data, JWT authentication with role-based access control (`patient`, `doctor`, `admin`), and append-only database audit logs.
 
 ---
 
-## 🏛️ System Architecture
-
-Althea AI operates on a modern microservices-inspired architecture.
+## Architecture
 
 ```mermaid
 graph TB
-    subgraph Client["Frontend — Next.js 16 (App Router)"]
-        Landing["Landing Page + Medical Disclaimer"]
-        PatientUI["Patient Module (MCQ, Diagnosis, Report Card)"]
-        DoctorUI["Doctor Dashboard (Submissions, Review, Analytics)"]
+    subgraph Frontend["Frontend (Next.js 16)"]
+        UI_Patient["Patient Interface (/questionnaire, /diagnosis, /dashboard)"]
+        UI_Doctor["Doctor Portal (/doctor, /submissions, /review, /analytics)"]
+        UI_Datasets["Dataset Viewer (/datasets)"]
     end
 
-    subgraph Backend["Backend — Node.js & Express"]
-        API["REST API Layer"]
-        Auth["JWT Authentication & RBAC Middleware"]
-        Crypto["AES-256-GCM Encryption Service"]
-        Audit["Immutable Audit Logger"]
+    subgraph Backend["API Server (Node.js / Express)"]
+        API["REST Endpoints (:3001)"]
+        Auth["JWT Auth & Role Middleware"]
+        Crypto["AES-256-GCM Encryption"]
+        Storage["PostgreSQL 16 / In-Memory Fallback"]
     end
 
-    subgraph AI["AI Engine — Python Flask Microservice"]
-        Classifier["Random Forest Classification Model"]
-        Tree["Adaptive Decision Tree Engine (Information Gain)"]
-        XAI["Explainable AI (SHAP / Feature Attribution)"]
+    subgraph ML["AI Service (Python / Flask)"]
+        Flask["Flask Server (:5000)"]
+        Model["Random Forest Classifier"]
+        Explainer["Feature Attribution Engine"]
     end
 
-    subgraph DB["Database — PostgreSQL 16"]
-        Tables["Patients | Doctors | Diagnoses | Feedback | Audit Logs | Questions"]
-    end
-
-    PatientUI -->|HTTP / REST| API
-    DoctorUI -->|HTTP / REST| API
-    API --> Auth --> Audit
+    UI_Patient -->|HTTP / JSON| API
+    UI_Doctor -->|HTTP / JSON| API
+    UI_Datasets -->|HTTP / JSON| API
+    API --> Auth
     API --> Crypto
-    API -->|Predict / Next Question| AI
-    API --> DB
-    AI --> DB
+    API --> Storage
+    API -->|POST /predict| Flask
+    Flask --> Model
+    Flask --> Explainer
 ```
 
 ---
 
-## 💻 Tech Stack
+## Tech Stack
 
-### Frontend Client
-- **Framework**: Next.js 16 (App Router), React 18
-- **Styling**: Vanilla CSS with a bespoke Ultra-Premium Dark Mode design system (Glassmorphism, Neon Accents, CSS Variables).
-- **Typography**: `Inter` and `Outfit` via Google Fonts.
-- **Icons**: Lucide/Custom SVG components.
-
-### Backend Server
-- **Runtime**: Node.js
-- **Framework**: Express.js
-- **Database Driver**: `pg` (PostgreSQL)
-- **Security**: bcryptjs, JSON Web Tokens (JWT), AES-256-GCM built-in crypto, Helmet, CORS, express-rate-limit.
-- **Validation**: Zod (for strict request payload validation).
-
-### AI Microservice
-- **Framework**: Python 3.10+, Flask
-- **Machine Learning**: scikit-learn (Random Forest Classifier), NumPy, Pandas, Joblib.
-- **Explainability**: Custom feature attribution logic (SHAP-inspired).
-
-### Database
-- **Engine**: PostgreSQL 16
-- **Features**: UUIDv4 extensions, complex JOINs, foreign key cascades, and trigger-enforced immutable audit logs.
+- **Frontend**: Next.js 16 (App Router), React 19, CSS modules / vanilla CSS
+- **Backend**: Node.js, Express 4.18, Zod (schema validation), Helmet, CORS, express-rate-limit
+- **Machine Learning**: Python 3.10+, Flask, scikit-learn (RandomForestClassifier), pandas, numpy, joblib
+- **Database**: PostgreSQL 16 (pg driver) with in-memory fallback for local development
+- **Security**: AES-256-GCM encryption at rest, bcryptjs password hashing, HTTP-only JWT cookies
+- **Containerization**: Docker, Docker Compose
 
 ---
 
-## 📁 Repository Structure
+## Directory Structure
 
 ```text
-Althea-AI/
-├── client/                     # Next.js 16 Frontend
-│   ├── src/app/
-│   │   ├── (dashboard)/        # Protected patient & doctor views
-│   │   │   ├── dashboard/      # Patient portal & history
-│   │   │   ├── questionnaire/  # Adaptive branching MCQ questionnaire
-│   │   │   ├── diagnosis/      # Top-3 diagnosis output + XAI explanations
-│   │   │   └── doctor/         # Doctor dashboard, reviews & analytics
-│   │   ├── login/              # Unified authentication portal
-│   │   ├── register/           # Two-step registration
-│   │   ├── globals.css         # Premium dark mode design system
-│   │   └── page.js             # High-converting landing page
-│   └── Dockerfile
-├── server/                     # Node.js + Express Backend
+.
+├── client/                     # Next.js frontend
 │   ├── src/
-│   │   ├── config/             # DB pool, AES-256 encryption, JWT config
-│   │   ├── controllers/        # Auth, Patient, Doctor, Diagnosis, etc.
-│   │   ├── middleware/         # JWT Auth, RBAC, Audit Log, Zod validation
-│   │   ├── routes/             # REST API routes
-│   │   └── __tests__/          # Jest automated security & validation tests
-│   └── Dockerfile
-├── ai-engine/                  # Python Flask AI Microservice
-│   ├── models/
-│   │   ├── classifier.py       # Random Forest classifier
-│   │   ├── decision_tree.py    # Adaptive questionnaire tree
-│   │   └── explainer.py        # Explainable AI & preventive tips generator
-│   ├── app.py                  # Flask REST API
-│   ├── test_logic.py           # Python unit tests
-│   └── Dockerfile
+│   │   ├── app/
+│   │   │   ├── (dashboard)/    # Authenticated patient and doctor routes
+│   │   │   │   ├── dashboard/      # Patient dashboard and past records
+│   │   │   │   ├── questionnaire/  # Multi-step symptom questionnaire
+│   │   │   │   ├── diagnosis/      # Differential diagnosis and score breakdown
+│   │   │   │   ├── health-report/  # Patient health summary
+│   │   │   │   ├── datasets/       # Training dataset viewer
+│   │   │   │   └── doctor/         # Clinician queue, review, and analytics
+│   │   │   ├── login/          # Login page
+│   │   │   ├── register/       # Patient registration
+│   │   │   ├── globals.css     # Global styles and theme tokens
+│   │   │   └── page.js         # Landing page
+│   │   ├── components/         # Reusable UI elements and icons
+│   │   └── context/            # Authentication context and HTTP helpers
+│   └── package.json
+│
+├── server/                     # Express REST API
+│   ├── src/
+│   │   ├── config/             # Database connection, crypto, JWT config
+│   │   ├── controllers/        # Request handlers for auth, diagnosis, etc.
+│   │   ├── middleware/         # Auth verification, role checks, validation
+│   │   ├── routes/             # API route definitions
+│   │   ├── utils/              # Error handling and helper functions
+│   │   ├── __tests__/          # Jest test suite
+│   │   └── index.js            # Server entry point
+│   └── package.json
+│
+├── ai-engine/                  # Python Flask classification service
+│   ├── data/                   # Clinical datasets (CSV format)
+│   │   ├── training_data.csv       # 4,920 records, 132 symptom columns
+│   │   ├── test_data.csv           # 42 validation test cases
+│   │   ├── symptom_Description.csv # Condition summaries
+│   │   ├── symptom_precaution.csv  # Care precautions per condition
+│   │   └── symptom_severity.csv    # Symptom severity weights
+│   ├── saved_models/           # Serialized model artifacts (.joblib)
+│   ├── models/                 # Classifier, decision tree, and explainer logic
+│   ├── app.py                  # Flask application entry point
+│   ├── test_logic.py           # Unit tests
+│   └── requirements.txt
+│
 ├── database/
-│   ├── schema.sql              # PostgreSQL schema with 8 tables & triggers
-│   └── seed.sql                # Seed doctors and adaptive question nodes
-├── docker-compose.yml          # Multi-container orchestration
-└── .env.example                # Environment variables template
+│   ├── schema.sql              # Table definitions and audit triggers
+│   └── seed.sql                # Seed accounts and questionnaire nodes
+│
+├── docker-compose.yml          # Container configuration
+├── .env.example                # Sample environment variables
+└── README.md
 ```
 
 ---
 
-## 🚀 Quick Start Guide
+## Getting Started
 
 ### Prerequisites
-- Docker & Docker Compose
-- Node.js (v18+)
-- Python (v3.10+)
-- PostgreSQL (if running locally without Docker)
-- Git
 
-### 1. Clone the Repository
-```bash
-git clone https://github.com/yash23082007/Althea-AI.git
-cd Althea-AI
-```
+- Node.js 18+ and npm
+- Python 3.10+
+- (Optional) Docker and Docker Compose
+- (Optional) PostgreSQL 16 (an in-memory store is used if PostgreSQL is not running)
 
-### 2. Environment Configuration
-Copy the example environment file and configure your secrets:
+---
+
+### Local Setup
+
+#### 1. Environment Variables
+
+Copy `.env.example` to `.env`:
+
 ```bash
 cp .env.example .env
 ```
-*(Ensure you set secure values for `JWT_SECRET` and `ENCRYPTION_KEY` in production!)*
 
-### Option A: Running with Docker Compose (Highly Recommended)
-This is the easiest way to get the entire stack running instantly.
+*(On Windows PowerShell: `Copy-Item .env.example .env`)*
+
+The default configuration points to local ports (`3000` client, `3001` server, `5000` AI engine) and contains development secrets.
+
+#### 2. Start the AI Engine
 
 ```bash
-# Build and launch all 4 services in detached mode
-docker-compose up --build -d
-```
-Services will be accessible at:
-- **Web Application**: `http://localhost:3000`
-- **Backend API**: `http://localhost:3001`
-- **AI Microservice**: `http://localhost:5000`
-- **PostgreSQL**: `localhost:5432`
-
-### Option B: Running Locally (Manual Setup)
-
-#### Step 1: Database Setup
-Ensure PostgreSQL is running on your machine.
-```bash
-psql -U postgres -c "CREATE DATABASE althea_db;"
-psql -U postgres -d althea_db -f database/schema.sql
-psql -U postgres -d althea_db -f database/seed.sql
+cd ai-engine
+pip install -r requirements.txt
+python app.py
 ```
 
-#### Step 2: Backend Server
+The service runs on `http://localhost:5000`.
+
+#### 3. Start the Backend API
+
+In a new terminal:
+
 ```bash
 cd server
 npm install
 npm run dev
-# The API will start on http://localhost:3001
 ```
 
-#### Step 3: AI Engine
-```bash
-cd ai-engine
-# Optional: Create a virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-python app.py
-# The Flask app will start on http://localhost:5000
-```
+The server runs on `http://localhost:3001`. If a PostgreSQL instance is not detected on port 5432, it will automatically fall back to its internal in-memory store.
 
-#### Step 4: Frontend Client
+#### 4. Start the Frontend
+
+In a new terminal:
+
 ```bash
 cd client
 npm install
 npm run dev
-# The Next.js app will start on http://localhost:3000
 ```
 
----
-
-## 🩺 Seed Doctor Credentials (For Demo/Review)
-
-To experience the Clinical Dashboard, use the following pre-seeded credentials.
-**Default Password for all seed accounts**: `Doctor@123`
-
-- `sarah.mitchell@hospital.com` — Dr. Sarah Mitchell (General Medicine)
-- `james.rodriguez@hospital.com` — Dr. James Rodriguez (Pulmonology)
-- `emily.chen@hospital.com` — Dr. Emily cycle (Cardiology)
-- `admin@hospital.com` — Hospital Administrator
-
-*Patients can self-register via `/register` to immediately interact with the AI questionnaire.*
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## 🧪 Testing
+### Docker Setup
 
-The repository contains rigorous test suites for both the backend and AI microservice to ensure mathematical and cryptographic integrity.
+To run all services in containers:
 
-**Run Backend Security Tests (Jest):**
+```bash
+docker-compose up --build -d
+```
+
+Services:
+- Client: `http://localhost:3000`
+- API Server: `http://localhost:3001`
+- AI Engine: `http://localhost:5000`
+- PostgreSQL: `localhost:5432`
+
+---
+
+### Cloud Deployment
+
+#### Vercel (Frontend)
+
+1. Import the repository into [Vercel](https://vercel.com).
+2. Set the **Root Directory** to `client` (or let Vercel use the root `vercel.json`).
+3. Add the environment variable:
+   - `NEXT_PUBLIC_API_URL`: `https://<your-backend-service>.onrender.com/api`
+4. Deploy.
+
+#### Render (Backend & AI Microservice)
+
+The repository includes a `render.yaml` Blueprint specification for deploying both services:
+
+**Option 1: Blueprint Deployment (Recommended)**
+1. Go to the [Render Dashboard](https://dashboard.render.com) and click **New** > **Blueprint**.
+2. Connect your repository. Render will detect `render.yaml` and configure both services:
+   - `althea-api`: Node.js Express service (`server`)
+   - `althea-ai-engine`: Python Flask/Gunicorn service (`ai-engine`)
+3. Set `AI_ENGINE_URL` on the API service to your AI Engine Render URL.
+
+**Option 2: Manual Web Services**
+1. **AI Engine**:
+   - Runtime: Python 3
+   - Root Directory: `ai-engine`
+   - Build Command: `pip install -r requirements.txt`
+   - Start Command: `gunicorn --bind 0.0.0.0:$PORT app:app`
+2. **Backend API**:
+   - Runtime: Node
+   - Root Directory: `server`
+   - Build Command: `npm install`
+   - Start Command: `npm start`
+   - Environment Variables:
+     - `NODE_ENV`: `production`
+     - `AI_ENGINE_URL`: `https://<ai-service>.onrender.com`
+     - `CORS_ORIGIN`: `https://<your-vercel-domain>.vercel.app`
+     - `JWT_ACCESS_SECRET`: `<random-secret>`
+     - `JWT_REFRESH_SECRET`: `<random-secret>`
+     - `ENCRYPTION_KEY`: `<64-hex-characters>`
+
+---
+
+## Seed Accounts
+
+The following test accounts are pre-configured:
+
+| Role | Email | Password | Scope |
+| :--- | :--- | :--- | :--- |
+| Doctor | `sarah.mitchell@hospital.com` | `Doctor@123` | Patient queue, review workflow, analytics |
+| Doctor | `james.rodriguez@hospital.com` | `Doctor@123` | Patient queue, review workflow |
+| Admin | `admin@hospital.com` | `Doctor@123` | System oversight and analytics |
+| Patient | Self-register at `/register` | User-defined | Questionnaire, diagnosis results, patient dashboard |
+
+---
+
+## Running Tests
+
+### Backend Tests (Jest)
+
+Tests covering encryption, JWT token management, user data sanitization, and Zod input validation schemas:
+
 ```bash
 cd server
 npm test
 ```
 
-**Run AI Logic Tests (Python Unittest):**
+### AI Engine Tests (Python)
+
+Tests covering dataset loading, model predictions, and feature attribution:
+
 ```bash
 cd ai-engine
-python -m unittest test_logic.py
+python test_logic.py
+```
+
+### Client Build Verification
+
+```bash
+cd client
+npm run build
 ```
 
 ---
 
-## 📜 License & Open Source
+## API Reference
 
-This project is open-source and available under the [MIT License](LICENSE).
-You are free to use, modify, and distribute this software in accordance with the terms of the license.
+### Authentication (`/api/auth`)
 
-<div align="center">
-  <p>Built with ❤️ by <a href="https://github.com/yash23082007">yash23082007</a></p>
-</div>
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/auth/register/patient` | Public | Register new patient account |
+| `POST` | `/api/auth/login` | Public | Authenticate user, set auth cookie, return JWT |
+| `POST` | `/api/auth/refresh` | Public | Refresh access token |
+| `POST` | `/api/auth/logout` | Authenticated | Clear session cookie |
+
+### Questionnaire (`/api/questionnaire`)
+
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/questionnaire/start` | Patient | Start new session, returns root question node |
+| `POST` | `/api/questionnaire/next` | Patient | Submit answer, returns next question or completion status |
+
+### Diagnosis (`/api/diagnoses`)
+
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/diagnoses` | Patient | Request diagnosis based on questionnaire responses |
+| `GET` | `/api/diagnoses/:id` | Patient/Doctor | Get specific diagnosis and feature attribution data |
+| `GET` | `/api/diagnoses/latest` | Patient | Get most recent diagnosis for the current user |
+| `GET` | `/api/diagnoses/datasets/info` | Authenticated | Get dataset summary and class distribution |
+
+### Doctor Portal (`/api/doctors`, `/api/feedback`)
+
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/doctors/dashboard` | Doctor | Dashboard metrics (pending cases, reviewed counts) |
+| `GET` | `/api/doctors/submissions` | Doctor | List patient submissions (filterable by status) |
+| `GET` | `/api/doctors/submissions/:id` | Doctor | Submission details with symptom data |
+| `POST` | `/api/feedback` | Doctor | Submit review action (`approve`, `override`, `correct`) |
+| `GET` | `/api/doctors/analytics` | Doctor/Admin | Aggregate triage and classification statistics |
+
+---
+
+## Security Implementation
+
+- **Data Encryption**: Patient PII and sensitive health fields are encrypted using AES-256-GCM before storage.
+- **Authentication**: Stateless access and refresh tokens via JSON Web Tokens (JWT), with passwords hashed using bcrypt (12 salt rounds).
+- **Audit Logging**: PostgreSQL trigger logs insert, update, and review events to an append-only audit table.
+- **Network & Headers**: Helmet security middleware, rate limiting (100 requests per 15 minutes per IP), and explicit CORS origin whitelisting.
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).

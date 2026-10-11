@@ -21,8 +21,19 @@ const PORT = process.env.PORT || 3001;
 // SECURITY MIDDLEWARE
 // ============================================
 app.use(helmet());
+const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
+const allowedOrigins = corsOrigin.includes(',')
+  ? corsOrigin.split(',').map(s => s.trim())
+  : [corsOrigin];
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (corsOrigin === '*' || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+      return callback(null, true);
+    }
+    return callback(null, true);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
