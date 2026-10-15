@@ -2,7 +2,7 @@ import os
 
 class Config:
     FLASK_ENV = os.getenv('FLASK_ENV', 'development')
-    FLASK_PORT = int(os.getenv('PORT', os.getenv('FLASK_PORT', 5000)))
+    FLASK_PORT = int(os.getenv('FLASK_PORT') or os.getenv('PORT') or 5000)
     DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://postgres:postgres123@localhost:5432/medical_diagnosis')
     MODEL_PATH = os.getenv('MODEL_PATH', './saved_models')
     DATA_PATH = os.getenv('DATA_PATH', './data')

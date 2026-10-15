@@ -12,7 +12,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: CORS_ORIGIN
-        value: "*"
+        sync: false
       - key: JWT_ACCESS_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
@@ -41,7 +41,7 @@ services:
       - key: FLASK_ENV
         value: production
       - key: AI_API_KEY
-        value: dev_ai_key
+        generateValue: true
       - key: MODEL_PATH
         value: ./saved_models
       - key: DATA_PATH

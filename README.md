@@ -63,7 +63,7 @@ graph TB
 - **Frontend**: Next.js 16 (App Router), React 19, CSS modules / vanilla CSS
 - **Backend**: Node.js, Express 4.18, Zod (schema validation), Helmet, CORS, express-rate-limit
 - **Machine Learning**: Python 3.10+, Flask, scikit-learn (RandomForestClassifier), pandas, numpy, joblib
-- **Database**: PostgreSQL 16 (pg driver) with in-memory fallback for local development
+- **Database**: PostgreSQL 16 (pg driver) with a durable local snapshot fallback for development only
 - **Security**: AES-256-GCM encryption at rest, bcryptjs password hashing, HTTP-only JWT cookies
 - **Containerization**: Docker, Docker Compose
 
@@ -171,7 +171,7 @@ npm install
 npm run dev
 ```
 
-The server runs on `http://localhost:3001`. If a PostgreSQL instance is not detected on port 5432, it will automatically fall back to its internal in-memory store.
+The server runs on `http://localhost:3001`. If a PostgreSQL instance is not detected on port 5432, it will use a durable local snapshot at `server/.data/mock-db.json` so demo data survives restarts. This fallback is for local development only; production deployments must use PostgreSQL.
 
 #### 4. Start the Frontend
 
@@ -184,6 +184,15 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+The API readiness endpoint at `http://localhost:3001/api/health/ready`
+returns `200` when the API and AI engine are available, or `503` when the
+AI engine is unavailable.
+
+The API performs a deterministic red-flag triage pass before storing AI results.
+Severe breathing difficulty, coughing blood, and extremely low energy are surfaced
+as urgent guidance; this is safety guidance, not a diagnosis. The repeatable browser
+journey, screenshots, and demo recording storyboard are maintained in `qa-evidence/`.
 
 ---
 

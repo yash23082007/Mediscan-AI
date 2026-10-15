@@ -2,7 +2,8 @@
 
 import { AuthProvider, useAuth } from '@/context/AuthContext'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { useEffect } from 'react'
 import { IconCaduceus, IconUser } from '@/components/Icons'
 import ClinicalDisclaimer from '@/components/ClinicalDisclaimer'
 
@@ -78,7 +79,7 @@ function DashboardNav() {
           </Link>
         </nav>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+        <div className="dashboard-user-actions" style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <div style={{
               width: 28,
@@ -116,9 +117,49 @@ function DashboardNav() {
   )
 }
 
-export default function DashboardLayout({ children }) {
+function MobileBottomNav() {
+  const { user } = useAuth()
+  const pathname = usePathname()
+  const links = user?.role === 'patient'
+    ? [
+        { href: '/dashboard', label: 'Workspace' },
+        { href: '/questionnaire', label: 'Assess' },
+        { href: '/health-report', label: 'Records' },
+        { href: '/datasets', label: 'Evidence' }
+      ]
+    : [
+        { href: '/doctor', label: 'Overview' },
+        { href: '/doctor/submissions', label: 'Triage' },
+        { href: '/doctor/analytics', label: 'Metrics' },
+        { href: '/datasets', label: 'Evidence' }
+      ]
+
   return (
-    <AuthProvider>
+    <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+      {links.map(link => (
+        <Link key={link.href} href={link.href} className={pathname.startsWith(link.href) ? 'active' : ''}>
+          <span aria-hidden="true">{link.label === 'Assess' ? '+' : '•'}</span>
+          {link.label}
+        </Link>
+      ))}
+    </nav>
+  )
+}
+
+function DashboardShell({ children }) {
+  const { user, loading } = useAuth()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace('/login')
+    }
+  }, [loading, router, user])
+
+  if (loading || !user) return null
+
+  return (
+    <>
       <DashboardNav />
       <main className="page-wrapper">
         <div className="container">
@@ -133,6 +174,15 @@ export default function DashboardLayout({ children }) {
           </div>
         </div>
       </footer>
+      <MobileBottomNav />
+    </>
+  )
+}
+
+export default function DashboardLayout({ children }) {
+  return (
+    <AuthProvider>
+      <DashboardShell>{children}</DashboardShell>
     </AuthProvider>
   )
 }

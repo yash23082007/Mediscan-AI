@@ -1,7 +1,7 @@
 const bcrypt = require('bcryptjs');
 const { query } = require('../config/database');
 const { generateTokenPair, verifyRefreshToken } = require('../config/jwt');
-const { encrypt } = require('../config/encryption');
+const { encrypt, decryptFields } = require('../config/encryption');
 const { createAuditLog } = require('../middleware/audit');
 const { sanitizeUser } = require('../utils/helpers');
 
@@ -34,7 +34,7 @@ const registerPatient = async (req, res, next) => {
       [name, email, password_hash, age, gender, weight || null, height || null, encryptedAllergies, encryptedConditions]
     );
 
-    const patient = result.rows[0];
+    const patient = decryptFields(result.rows[0], ['allergies', 'chronic_conditions']);
     const tokens = generateTokenPair(patient);
 
     // Initialize gamification record

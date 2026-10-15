@@ -55,14 +55,16 @@ const errorHandler = (err, req, res, _next) => {
   if (err.isOperational) {
     return res.status(err.statusCode).json({
       error: err.message,
-      statusCode: err.statusCode
+      statusCode: err.statusCode,
+      requestId: req.requestId
     });
   }
 
   // Programming errors (unexpected)
   return res.status(500).json({
     error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong',
+    requestId: req.requestId
   });
 };
 

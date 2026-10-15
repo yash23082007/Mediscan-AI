@@ -62,7 +62,7 @@ const getSubmissions = async (req, res, next) => {
       `SELECT COUNT(*) FROM diagnoses d ${whereClause}`,
       values
     );
-    const total = parseInt(countResult.rows[0].count);
+    const total = countResult.rows?.[0]?.count ? parseInt(countResult.rows[0].count) : 0;
 
     values.push(limit, offset);
     const result = await query(

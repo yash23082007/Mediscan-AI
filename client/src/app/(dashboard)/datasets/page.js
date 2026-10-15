@@ -142,7 +142,7 @@ const SAMPLE_SYMPTOMS = [
 ]
 
 export default function DatasetsPage() {
-  const { authFetch } = useAuth()
+  const { authFetch, loading: authLoading } = useAuth()
   const [activeTab, setActiveTab] = useState('overview')
   const [symptomSearch, setSymptomSearch] = useState('')
   const [conditionSearch, setConditionSearch] = useState('')
@@ -150,8 +150,9 @@ export default function DatasetsPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (authLoading) return
     loadDatasetInfo()
-  }, [])
+  }, [authLoading, authFetch])
 
   const loadDatasetInfo = async () => {
     try {
@@ -190,7 +191,7 @@ export default function DatasetsPage() {
           </p>
         </div>
         <Link href="/questionnaire" className="btn btn-primary btn-sm">
-          Start Clinical Assessment â†’
+          Start Clinical Assessment →
         </Link>
       </div>
 
@@ -289,7 +290,7 @@ export default function DatasetsPage() {
                   className="btn btn-ghost btn-sm"
                   style={{ fontSize: '0.75rem', minHeight: '30px', padding: '0.25rem 0.5rem' }}
                 >
-                  View Source CSV â†—
+                  View Source CSV ↔
                 </a>
               </div>
             </div>

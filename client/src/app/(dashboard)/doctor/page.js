@@ -15,13 +15,14 @@ import {
 import ClinicalDisclaimer from '@/components/ClinicalDisclaimer'
 
 export default function DoctorDashboard() {
-  const { user, authFetch } = useAuth()
+  const { user, authFetch, loading: authLoading } = useAuth()
   const [dashboard, setDashboard] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (authLoading || !user) return
     loadDashboard()
-  }, [])
+  }, [authLoading, authFetch, user])
 
   async function loadDashboard() {
     try {
@@ -135,7 +136,7 @@ export default function DoctorDashboard() {
           </div>
 
           <Link href="/doctor/submissions" className="btn btn-ghost btn-sm" style={{ color: 'var(--clinical-teal)', fontWeight: 600 }}>
-            Full Triage Registry â†’
+            Full Triage Registry →
           </Link>
         </div>
 
@@ -170,7 +171,7 @@ export default function DoctorDashboard() {
                       {sub.patient_name}
                     </td>
                     <td className="text-caption text-tabular">
-                      {sub.patient_age ? `${sub.patient_age}y` : 'â€”'} &bull; {sub.patient_gender || 'â€”'}
+                      {sub.patient_age ? `${sub.patient_age}y` : '—'} &bull; {sub.patient_gender || '—'}
                     </td>
                     <td style={{ fontWeight: 500 }}>
                       {sub.conditions?.[0]?.name || 'Assessment'}
@@ -182,7 +183,7 @@ export default function DoctorDashboard() {
                     </td>
                     <td>
                       <span className={`triage-tier-badge ${isApproved ? 'routine' : isPending ? 'moderate' : 'urgent'}`}>
-                        {isApproved ? 'âœ“ Verified' : isPending ? 'Review Required' : sub.status}
+                        {isApproved ? 'Verified' : isPending ? 'Review Required' : sub.status}
                       </span>
                     </td>
                     <td className="text-caption text-tabular">

@@ -57,14 +57,15 @@ function EvidenceIndicator({ confidence }) {
 function DiagnosisContent() {
   const searchParams = useSearchParams()
   const diagnosisId = searchParams.get('id')
-  const { authFetch } = useAuth()
+  const { user, authFetch, loading: authLoading } = useAuth()
   const [diagnosis, setDiagnosis] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showTechnicalWeights, setShowTechnicalWeights] = useState(false)
 
   useEffect(() => {
+    if (authLoading || !user) return
     loadDiagnosis()
-  }, [diagnosisId])
+  }, [authLoading, authFetch, diagnosisId, user])
 
   const loadDiagnosis = async () => {
     try {
@@ -117,6 +118,7 @@ function DiagnosisContent() {
   const contributions = hasStructured ? (rawContributions.factors || {}) : rawContributions
   const clinicalOverview = hasStructured ? rawContributions.clinical_overview : ''
   const precautions = hasStructured ? (rawContributions.precautions || []) : []
+  const triage = hasStructured ? (rawContributions.triage || null) : null
 
   return (
     <div className="animate-calm-fade" style={{ maxWidth: '820px', margin: '0 auto' }}>
@@ -142,7 +144,7 @@ function DiagnosisContent() {
 
           <span className={`triage-tier-badge ${diagnosis.status === 'approved' ? 'routine' : 'moderate'}`}>
             {diagnosis.status === 'approved'
-              ? 'âœ“ Physician Verified'
+              ? 'Verified by Physician'
               : 'Submitted for Clinical Review'}
           </span>
         </div>
@@ -150,6 +152,16 @@ function DiagnosisContent() {
 
       {/* Emergency Guidance Check */}
       <EmergencyNotice className="mb-4" />
+
+      {triage?.level === 'urgent' && (
+        <section className="clinical-alert clinical-alert-urgent mb-4" role="alert" aria-live="assertive">
+          <div>
+            <strong>{triage.title}</strong>
+            <p>{triage.guidance}</p>
+          </div>
+          <span className="triage-tier-badge urgent">Urgent</span>
+        </section>
+      )}
 
       {/* Primary Clinical Consideration Card */}
       <div className="triage-tier-card primary mb-4" style={{ padding: '2rem' }}>
@@ -298,7 +310,7 @@ function DiagnosisContent() {
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <span style={{ color: isPositive ? 'var(--clinical-teal)' : 'var(--text-muted)', fontSize: '0.875rem' }}>
-                        {isPositive ? 'â—' : 'â—‹'}
+                        {isPositive ? '●' : '○'}
                       </span>
                       <span style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-primary)' }}>
                         {formattedName}
@@ -333,7 +345,7 @@ function DiagnosisContent() {
           </p>
         </div>
         <Link href="/datasets" className="btn btn-secondary btn-sm">
-          Review Dataset Provenance â†’
+          Review Dataset Provenance →
         </Link>
       </div>
 

@@ -1,7 +1,7 @@
 /* eslint-disable */
 'use client'
 
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 
 const AuthContext = createContext(null)
 
@@ -56,7 +56,7 @@ export function AuthProvider({ children }) {
     return data
   }
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setToken(null)
     setUser(null)
     localStorage.removeItem('accessToken')
@@ -67,9 +67,9 @@ export function AuthProvider({ children }) {
       headers: { Authorization: `Bearer ${token}` },
       credentials: 'include'
     }).catch(() => {})
-  }
+  }, [])
 
-  const authFetch = async (url, options = {}) => {
+  const authFetch = useCallback(async (url, options = {}) => {
     const res = await fetch(`${API_URL}${url}`, {
       ...options,
       headers: {
@@ -84,7 +84,7 @@ export function AuthProvider({ children }) {
       throw new Error('Session expired')
     }
     return res
-  }
+  }, [logout, token])
 
   return (
     <AuthContext.Provider value={{ user, token, loading, login, registerPatient, logout, authFetch }}>

@@ -17,14 +17,15 @@ import ClinicalDisclaimer from '@/components/ClinicalDisclaimer'
 import EmergencyNotice from '@/components/EmergencyNotice'
 
 export default function HealthReportPage() {
-  const { user, authFetch } = useAuth()
+  const { user, authFetch, loading: authLoading } = useAuth()
   const [gamification, setGamification] = useState(null)
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (authLoading || !user) return
     loadData()
-  }, [])
+  }, [authLoading, authFetch, user])
 
   async function loadData() {
     try {
@@ -230,7 +231,7 @@ export default function HealthReportPage() {
                     </td>
                     <td>
                       <span className={`triage-tier-badge ${isApproved ? 'routine' : 'moderate'}`}>
-                        {isApproved ? 'âœ“ Verified by Doctor' : 'Under Review'}
+                        {isApproved ? 'Verified by Doctor' : 'Under Review'}
                       </span>
                     </td>
                     <td style={{ textAlign: 'right' }}>
@@ -239,7 +240,7 @@ export default function HealthReportPage() {
                         className="btn btn-ghost btn-sm"
                         style={{ minHeight: '30px', padding: '0.25rem 0.5rem' }}
                       >
-                        View Summary â†’
+                        View Summary →
                       </Link>
                     </td>
                   </tr>
