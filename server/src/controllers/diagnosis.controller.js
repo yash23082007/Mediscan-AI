@@ -1,5 +1,6 @@
 const { query } = require('../config/database');
 const axios = require('axios');
+const { assessTriage } = require('../utils/triage');
 
 const AI_ENGINE_URL = process.env.AI_ENGINE_URL || 'http://localhost:5000';
 
@@ -36,6 +37,8 @@ const createDiagnosis = async (req, res, next) => {
       }
     }
 
+    const triage = assessTriage(responses);
+
     // Call AI Engine
     let aiResult;
     try {
@@ -54,16 +57,10 @@ const createDiagnosis = async (req, res, next) => {
       aiResult = aiResponse.data;
     } catch (aiError) {
       console.error('AI Engine error:', aiError.message);
-      // Fallback: return a placeholder result if AI engine is unavailable
-      aiResult = {
-        conditions: [
-          { name: 'Consultation Recommended', confidence: 0.95 },
-          { name: 'Further Tests Needed', confidence: 0.80 },
-          { name: 'General Checkup', confidence: 0.65 }
-        ],
-        explanation: 'AI engine is currently processing. Please consult a doctor for detailed diagnosis.',
-        feature_contributions: {}
-      };
+      return res.status(503).json({
+        error: 'The clinical analysis service is temporarily unavailable. Your responses were saved; please try again shortly.',
+        code: 'AI_ENGINE_UNAVAILABLE'
+      });
     }
 
     // Store diagnosis with rich clinical metadata from internet datasets
@@ -71,6 +68,7 @@ const createDiagnosis = async (req, res, next) => {
       factors: aiResult.feature_contributions || {},
       clinical_overview: aiResult.clinical_overview || '',
       precautions: aiResult.precautions || [],
+      triage,
       dataset_info: aiResult.dataset_info || null
     };
 
@@ -108,8 +106,10 @@ const getDatasetsInfo = async (req, res, next) => {
     const aiResponse = await axios.get(`${AI_ENGINE_URL}/datasets/info`, { timeout: 5000 });
     res.json(aiResponse.data);
   } catch (error) {
-    res.json({
-      status: 'active',
+    res.status(503).json({
+      status: 'unavailable',
+      error: 'Clinical dataset metadata is temporarily unavailable.',
+      code: 'AI_ENGINE_UNAVAILABLE',
       metrics: {
         accuracy: 0.9762,
         validation_accuracy: 1.0,

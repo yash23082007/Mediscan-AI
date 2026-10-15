@@ -26,7 +26,7 @@ const CATEGORY_RATIONALES = {
 }
 
 export default function QuestionnairePage() {
-  const { authFetch } = useAuth()
+  const { authFetch, loading: authLoading } = useAuth()
   const router = useRouter()
   const [sessionId, setSessionId] = useState(null)
   const [currentQuestion, setCurrentQuestion] = useState(null)
@@ -38,10 +38,12 @@ export default function QuestionnairePage() {
   const [submitting, setSubmitting] = useState(false)
   const [completed, setCompleted] = useState(false)
   const [diagnosisLoading, setDiagnosisLoading] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
+    if (authLoading) return
     startQuestionnaire()
-  }, [])
+  }, [authLoading, authFetch])
 
   // Keyboard navigation support
   useEffect(() => {
@@ -79,10 +81,12 @@ export default function QuestionnairePage() {
     try {
       const res = await authFetch('/questionnaire/start', { method: 'POST' })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Assessment could not be started')
       setSessionId(data.sessionId)
       setCurrentQuestion(data.question)
     } catch (err) {
       console.error('Questionnaire start failure:', err)
+      setError('We could not start your assessment. Please check your connection and try again.')
     } finally {
       setLoading(false)
     }
@@ -102,6 +106,7 @@ export default function QuestionnairePage() {
     ])
 
     setSubmitting(true)
+    setError('')
     try {
       const res = await authFetch('/questionnaire/next', {
         method: 'POST',
@@ -112,6 +117,7 @@ export default function QuestionnairePage() {
         })
       })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Response could not be saved')
 
       if (data.completed) {
         setCompleted(true)
@@ -124,6 +130,7 @@ export default function QuestionnairePage() {
       }
     } catch (err) {
       console.error('Question submission error:', err)
+      setError('Your response could not be saved. Please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -156,10 +163,13 @@ export default function QuestionnairePage() {
         body: JSON.stringify({ questionnaire_id: sessionId })
       })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Clinical analysis is unavailable')
       router.push(`/diagnosis?id=${data.diagnosis?.id}`)
     } catch (err) {
       console.error('Diagnosis synthesis error:', err)
-      router.push('/dashboard')
+      setCompleted(false)
+      setDiagnosisLoading(false)
+      setError(err.message || 'Clinical analysis is temporarily unavailable. Your responses are saved; please try again shortly.')
     }
   }
 
@@ -182,6 +192,19 @@ export default function QuestionnairePage() {
           <h2 className="heading-sm mb-1">Initiating Clinical Consultation</h2>
           <p className="text-caption">Calibrating adaptive inquiry based on your health baseline...</p>
         </div>
+      </div>
+    )
+  }
+
+  if (error && !currentQuestion) {
+    return (
+      <div className="clinical-card-elevated text-center" style={{ maxWidth: '560px', margin: '4rem auto', padding: '2.5rem 2rem' }} role="alert">
+        <IconAlertTriangle size={28} color="var(--triage-moderate)" />
+        <h1 className="heading-md" style={{ marginTop: '1rem' }}>Assessment unavailable</h1>
+        <p className="text-secondary" style={{ margin: '0.75rem auto 1.5rem', maxWidth: '42ch' }}>{error}</p>
+        <button className="btn btn-primary" onClick={() => { setError(''); setLoading(true); startQuestionnaire() }}>
+          Try again
+        </button>
       </div>
     )
   }
@@ -223,6 +246,13 @@ export default function QuestionnairePage() {
 
   return (
     <div className="question-consultation-container animate-calm-fade">
+    {error && (
+      <div className="clinical-alert clinical-alert-warning" role="alert" style={{ marginBottom: '1rem' }}>
+        <IconAlertTriangle size={18} />
+        <span>{error}</span>
+        <button className="btn btn-ghost btn-sm" onClick={() => setError('')}>Dismiss</button>
+      </div>
+    )}
       {/* Consultation Navigation & Status Bar */}
       <div className="question-status-bar">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
@@ -251,6 +281,9 @@ export default function QuestionnairePage() {
           </span>
         </div>
       </div>
+      <div className="question-progress" aria-label={`Assessment progress: ${Math.min(95, Math.round((answeredCount / 8) * 100))}%`}>
+        <span style={{ width: `${Math.min(95, Math.round((answeredCount / 8) * 100))}%` }} />
+      </div>
 
       {/* Main Question Environment */}
       {currentQuestion && (
@@ -259,7 +292,7 @@ export default function QuestionnairePage() {
             {currentQuestion.question_text}
           </h1>
 
-          {/* Clinical Rationale â€” Explaining "Why am I being asked this?" */}
+          {/* Clinical Rationale — Explaining "Why am I being asked this?" */}
           <div className="question-rationale" role="note">
             <IconHelpCircle size={18} color="var(--clinical-teal)" style={{ flexShrink: 0, marginTop: '1px' }} />
             <div>
@@ -314,7 +347,7 @@ export default function QuestionnairePage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
                     {isMulti ? (
                       <div className="option-checkbox-box">
-                        {isSelected && <span style={{ color: '#ffffff', fontSize: '0.75rem', fontWeight: 700 }}>âœ“</span>}
+                        {isSelected && <span style={{ color: '#ffffff', fontSize: '0.75rem', fontWeight: 700 }}>✓</span>}
                       </div>
                     ) : (
                       <div className="option-radio-dot" />

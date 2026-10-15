@@ -158,6 +158,11 @@ class MedicalClassifier:
             return self._rule_based_predict(patient, symptoms)
         
         try:
+            if not isinstance(symptoms, (dict, list)):
+                raise ValueError('symptoms must be an object or array')
+            if not symptoms:
+                raise ValueError('at least one symptom is required')
+
             # Map inputs to 132-symptom feature vector
             feature_vector = self._symptoms_to_features(patient, symptoms)
             
@@ -210,6 +215,7 @@ class MedicalClassifier:
         the 132-symptom binary vector expected by the internet-trained Random Forest model.
         """
         feature_dict = {f: 0 for f in self.feature_names}
+        response_map = symptoms if isinstance(symptoms, dict) else {}
         
         # 1. Direct symptom name matching
         if isinstance(symptoms, list):
@@ -218,21 +224,21 @@ class MedicalClassifier:
                 if s_clean in feature_dict:
                     feature_dict[s_clean] = 1
         elif isinstance(symptoms, dict):
-            for k, val in symptoms.items():
+            for k, val in response_map.items():
                 k_clean = str(k).lower().replace(' ', '_').strip()
                 if k_clean in feature_dict and val:
                     feature_dict[k_clean] = 1
                     
         # 2. Questionnaire ID mapping
         # Fever questions
-        fever_sev = symptoms.get('q0000000-0000-0000-0000-000000000002', '')
+        fever_sev = response_map.get('q0000000-0000-0000-0000-000000000002', '')
         if fever_sev == 'high':
             if 'high_fever' in feature_dict: feature_dict['high_fever'] = 1
         elif fever_sev in ['mild', 'moderate']:
             if 'mild_fever' in feature_dict: feature_dict['mild_fever'] = 1
             
         # Cough questions
-        cough_type = symptoms.get('q0000000-0000-0000-0000-000000000004', '')
+        cough_type = response_map.get('q0000000-0000-0000-0000-000000000004', '')
         if cough_type in ['dry', 'productive', 'bloody']:
             if 'cough' in feature_dict: feature_dict['cough'] = 1
         if cough_type == 'productive':
@@ -242,7 +248,7 @@ class MedicalClassifier:
             if 'phlegm' in feature_dict: feature_dict['phlegm'] = 1
             
         # General multi-choice symptoms
-        gen_sym = symptoms.get('q0000000-0000-0000-0000-000000000005', [])
+        gen_sym = response_map.get('q0000000-0000-0000-0000-000000000005', [])
         if isinstance(gen_sym, str):
             gen_sym = [gen_sym]
         for item in gen_sym:
@@ -266,27 +272,27 @@ class MedicalClassifier:
                 if 'congestion' in feature_dict: feature_dict['congestion'] = 1
                 
         # COVID taste/smell
-        taste = symptoms.get('q0000000-0000-0000-0000-000000000006', '')
+        taste = response_map.get('q0000000-0000-0000-0000-000000000006', '')
         if taste in ['yes', 'partial'] and 'loss_of_smell' in feature_dict:
             feature_dict['loss_of_smell'] = 1
             
         # Breathing difficulty
-        breath = symptoms.get('q0000000-0000-0000-0000-000000000008', '')
+        breath = response_map.get('q0000000-0000-0000-0000-000000000008', '')
         if breath in ['mild', 'moderate', 'severe'] and 'breathlessness' in feature_dict:
             feature_dict['breathlessness'] = 1
             
         # Respiratory type
-        resp_type = symptoms.get('q0000000-0000-0000-0000-000000000010', '')
+        resp_type = response_map.get('q0000000-0000-0000-0000-000000000010', '')
         if resp_type in ['wheezing', 'shortness', 'rapid'] and 'breathlessness' in feature_dict:
             feature_dict['breathlessness'] = 1
             
         # Chest pain
-        chest = symptoms.get('q0000000-0000-0000-0000-000000000012', '')
+        chest = response_map.get('q0000000-0000-0000-0000-000000000012', '')
         if chest in ['sharp', 'dull', 'burning'] and 'chest_pain' in feature_dict:
             feature_dict['chest_pain'] = 1
             
         # Digestive symptoms
-        dig_sym = symptoms.get('q0000000-0000-0000-0000-000000000020', [])
+        dig_sym = response_map.get('q0000000-0000-0000-0000-000000000020', [])
         if isinstance(dig_sym, str):
             dig_sym = [dig_sym]
         for item in dig_sym:
@@ -308,7 +314,7 @@ class MedicalClassifier:
                 if 'indigestion' in feature_dict: feature_dict['indigestion'] = 1
                 
         # Pain category
-        pain_loc = symptoms.get('q0000000-0000-0000-0000-000000000030', '')
+        pain_loc = response_map.get('q0000000-0000-0000-0000-000000000030', '')
         if pain_loc == 'joints':
             if 'joint_pain' in feature_dict: feature_dict['joint_pain'] = 1
             if 'swelling_joints' in feature_dict: feature_dict['swelling_joints'] = 1
@@ -320,7 +326,7 @@ class MedicalClassifier:
             if 'muscle_weakness' in feature_dict: feature_dict['muscle_weakness'] = 1
             
         # Skin symptoms
-        skin_sym = symptoms.get('q0000000-0000-0000-0000-000000000040', [])
+        skin_sym = response_map.get('q0000000-0000-0000-0000-000000000040', [])
         if isinstance(skin_sym, str):
             skin_sym = [skin_sym]
         for item in skin_sym:

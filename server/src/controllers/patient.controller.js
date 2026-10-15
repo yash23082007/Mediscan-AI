@@ -151,7 +151,7 @@ const getPatientHistory = async (req, res, next) => {
       'SELECT COUNT(*) FROM diagnoses WHERE patient_id = $1',
       [id]
     );
-    const total = parseInt(countResult.rows[0].count);
+    const total = countResult.rows?.[0]?.count ? parseInt(countResult.rows[0].count) : 0;
 
     const result = await query(
       `SELECT d.id, d.conditions, d.confidence_scores, d.explanation,

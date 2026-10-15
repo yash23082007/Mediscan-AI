@@ -1,5 +1,7 @@
 const { Pool } = require('pg');
 const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
+const path = require('path');
 
 let pool = null;
 let useMock = false;
@@ -11,7 +13,7 @@ const db = {
       id: 'd1000000-0000-0000-0000-000000000001',
       name: 'Dr. Sarah Mitchell',
       email: 'sarah.mitchell@hospital.com',
-      password_hash: '$2b$12$LJ3m4ys3Lz0JW8s5Kz8z8O1vE5qR2fGx6zV8rJ4kN9tL7mB3wA6Oi', // Doctor@123
+      password_hash: '$2a$12$eYw6krpVwLCSvNoP86erW.fRachEoxdSHtnVTufzg0vs.BwoQqPUK', // Doctor@123
       specialization: 'General Medicine',
       license_number: 'MED-2024-001',
       role: 'doctor',
@@ -23,7 +25,7 @@ const db = {
       id: 'd1000000-0000-0000-0000-000000000002',
       name: 'Dr. James Rodriguez',
       email: 'james.rodriguez@hospital.com',
-      password_hash: '$2b$12$LJ3m4ys3Lz0JW8s5Kz8z8O1vE5qR2fGx6zV8rJ4kN9tL7mB3wA6Oi',
+      password_hash: '$2a$12$eYw6krpVwLCSvNoP86erW.fRachEoxdSHtnVTufzg0vs.BwoQqPUK',
       specialization: 'Pulmonology',
       license_number: 'MED-2024-002',
       role: 'doctor',
@@ -35,7 +37,7 @@ const db = {
       id: 'd1000000-0000-0000-0000-000000000003',
       name: 'Dr. Emily Chen',
       email: 'emily.chen@hospital.com',
-      password_hash: '$2b$12$LJ3m4ys3Lz0JW8s5Kz8z8O1vE5qR2fGx6zV8rJ4kN9tL7mB3wA6Oi',
+      password_hash: '$2a$12$eYw6krpVwLCSvNoP86erW.fRachEoxdSHtnVTufzg0vs.BwoQqPUK',
       specialization: 'Cardiology',
       license_number: 'MED-2024-003',
       role: 'doctor',
@@ -47,7 +49,7 @@ const db = {
       id: 'd1000000-0000-0000-0000-000000000004',
       name: 'Admin User',
       email: 'admin@hospital.com',
-      password_hash: '$2b$12$LJ3m4ys3Lz0JW8s5Kz8z8O1vE5qR2fGx6zV8rJ4kN9tL7mB3wA6Oi',
+      password_hash: '$2a$12$eYw6krpVwLCSvNoP86erW.fRachEoxdSHtnVTufzg0vs.BwoQqPUK',
       specialization: 'Administration',
       license_number: 'ADM-2024-001',
       role: 'admin',
@@ -231,6 +233,34 @@ const db = {
   gamification: []
 };
 
+const mockDbPath = path.resolve(__dirname, '../../.data/mock-db.json');
+
+const loadMockDatabase = () => {
+  if (!fs.existsSync(mockDbPath)) return;
+
+  try {
+    const persisted = JSON.parse(fs.readFileSync(mockDbPath, 'utf8'));
+    Object.keys(db).forEach((collection) => {
+      if (Array.isArray(persisted[collection])) {
+        db[collection] = persisted[collection];
+      }
+    });
+  } catch (error) {
+    console.warn(`Unable to load local database snapshot: ${error.message}`);
+  }
+};
+
+const persistMockDatabase = () => {
+  try {
+    fs.mkdirSync(path.dirname(mockDbPath), { recursive: true });
+    fs.writeFileSync(mockDbPath, JSON.stringify(db), 'utf8');
+  } catch (error) {
+    console.warn(`Unable to persist local database snapshot: ${error.message}`);
+  }
+};
+
+loadMockDatabase();
+
 // Try to initialize Postgres connection pool
 try {
   pool = new Pool({
@@ -411,10 +441,25 @@ function mockQuery(text, params = []) {
     return { rows: [diag], rowCount: 1 };
   }
 
-  // 15. SELECT FROM diagnoses WHERE patient_id = $1 ORDER BY created_at DESC LIMIT 1
-  if (lower.includes('from diagnoses where patient_id = $1') && lower.includes('limit 1')) {
+  // 15a. SELECT COUNT(*) FROM diagnoses WHERE patient_id = $1
+  if (lower.includes('count(*)') && lower.includes('from diagnoses') && lower.includes('patient_id = $1')) {
+    const patientDiags = db.diagnoses.filter(d => d.patient_id === params[0]);
+    return { rows: [{ count: patientDiags.length.toString() }], rowCount: 1 };
+  }
+
+  // 15b. SELECT FROM diagnoses WHERE patient_id = $1 ORDER BY created_at DESC LIMIT 1
+  if (lower.includes('from diagnoses') && lower.includes('patient_id = $1') && lower.includes('limit 1')) {
     const patientDiags = db.diagnoses.filter(d => d.patient_id === params[0]).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     return { rows: patientDiags.slice(0, 1), rowCount: patientDiags.length > 0 ? 1 : 0 };
+  }
+
+  // 15c. SELECT FROM diagnoses WHERE patient_id = $1 (full history)
+  if (lower.includes('from diagnoses') && lower.includes('patient_id = $1')) {
+    const patientDiags = db.diagnoses.filter(d => d.patient_id === params[0]).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const limit = typeof params[1] === 'number' ? params[1] : 20;
+    const offset = typeof params[2] === 'number' ? params[2] : 0;
+    const sliced = patientDiags.slice(offset, offset + limit);
+    return { rows: sliced, rowCount: sliced.length };
   }
 
   // 16. SELECT FROM diagnoses WHERE id = $1
@@ -458,9 +503,13 @@ function mockQuery(text, params = []) {
   }
 
   // 18. Doctor dashboard stats & submissions
-  if (lower.includes("count(*) from diagnoses where status = 'pending'")) {
-    const pending = db.diagnoses.filter(d => d.status === 'pending').length;
-    return { rows: [{ count: pending.toString() }], rowCount: 1 };
+  if (lower.includes('count(*) from diagnoses') && (lower.includes('status = $1') || lower.includes("status = 'pending'") || lower.includes('d.status ='))) {
+    const targetStatus = params && params.length > 0 && typeof params[0] === 'string' ? params[0] : 'pending';
+    const count = db.diagnoses.filter(d => d.status === targetStatus).length;
+    return { rows: [{ count: count.toString() }], rowCount: 1 };
+  }
+  if (lower.includes('count(*) from diagnoses') && !lower.includes('where')) {
+    return { rows: [{ count: db.diagnoses.length.toString() }], rowCount: 1 };
   }
   if (lower.includes('count(*) from feedback where doctor_id = $1')) {
     const count = db.feedback.filter(f => f.doctor_id === params[0]).length;
@@ -470,8 +519,12 @@ function mockQuery(text, params = []) {
     const unique = new Set(db.diagnoses.map(d => d.patient_id)).size;
     return { rows: [{ count: unique.toString() }], rowCount: 1 };
   }
-  if (lower.includes('from diagnoses d join patients p')) {
-    const enriched = db.diagnoses.map(d => {
+  if (lower.includes('from diagnoses d') && lower.includes('patients p')) {
+    let diags = db.diagnoses;
+    if (lower.includes('d.status = $1') && params.length > 0) {
+      diags = diags.filter(d => d.status === params[0]);
+    }
+    const enriched = diags.map(d => {
       const p = db.patients.find(pt => pt.id === d.patient_id) || {};
       return {
         ...d,
@@ -541,7 +594,9 @@ function mockQuery(text, params = []) {
 
 const query = async (text, params) => {
   if (useMock || !pool) {
-    return mockQuery(text, params);
+    const result = mockQuery(text, params);
+    persistMockDatabase();
+    return result;
   }
 
   try {
@@ -553,10 +608,15 @@ const query = async (text, params) => {
     }
     return result;
   } catch (err) {
-    // If PostgreSQL fails at runtime, fallback gracefully
-    console.warn(`⚠️ PostgreSQL query failed (${err.code || err.message}). Using resilient in-memory database store.`);
+    if (process.env.NODE_ENV === 'production') {
+      throw err;
+    }
+    // The snapshot-backed fallback is intentionally development-only.
+    console.warn(`⚠️ PostgreSQL query failed (${err.code || err.message}). Using local development database store.`);
     useMock = true;
-    return mockQuery(text, params);
+    const result = mockQuery(text, params);
+    persistMockDatabase();
+    return result;
   }
 };
 

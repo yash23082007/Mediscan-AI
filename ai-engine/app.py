@@ -58,6 +58,10 @@ def predict():
         
         patient = data.get('patient', {})
         symptoms = data.get('symptoms', {})
+        if not isinstance(patient, dict):
+            return jsonify({'error': 'patient must be an object'}), 400
+        if not isinstance(symptoms, (dict, list)) or not symptoms:
+            return jsonify({'error': 'at least one symptom is required'}), 400
         
         # Get predictions
         predictions = classifier.predict(patient, symptoms)

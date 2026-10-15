@@ -34,6 +34,8 @@ venv.bak/
 .venv/
 ai-engine/venv/
 ai-engine/.venv/
+ai-engine/saved_models/
+saved_models/
 
 # Testing & Coverage
 coverage/
@@ -52,3 +54,5 @@ yarn-error.log*
 
 # Vercel
 .vercel
+.data/
+server/.data/

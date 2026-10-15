@@ -17,15 +17,16 @@ import ClinicalDisclaimer from '@/components/ClinicalDisclaimer'
 function SubmissionsContent() {
   const searchParams = useSearchParams()
   const statusFilter = searchParams.get('status') || ''
-  const { authFetch } = useAuth()
+  const { authFetch, loading: authLoading } = useAuth()
   const [submissions, setSubmissions] = useState([])
   const [pagination, setPagination] = useState(null)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState(statusFilter)
 
   useEffect(() => {
+    if (authLoading) return
     loadSubmissions()
-  }, [filter])
+  }, [authLoading, authFetch, filter])
 
   async function loadSubmissions() {
     setLoading(true)
@@ -116,7 +117,7 @@ function SubmissionsContent() {
                       {sub.patient_name}
                     </td>
                     <td className="text-caption text-tabular">
-                      {sub.patient_age ? `${sub.patient_age} yrs` : 'â€”'} &bull; {sub.patient_gender || 'â€”'}
+                      {sub.patient_age ? `${sub.patient_age} yrs` : '—'} &bull; {sub.patient_gender || '—'}
                       {sub.patient_weight && ` &bull; ${sub.patient_weight} kg`}
                     </td>
                     <td style={{ fontWeight: 500 }}>
@@ -129,7 +130,7 @@ function SubmissionsContent() {
                     </td>
                     <td>
                       <span className={`triage-tier-badge ${isApproved ? 'routine' : isPending ? 'moderate' : 'urgent'}`}>
-                        {isApproved ? 'âœ“ Verified' : isPending ? 'Review Required' : sub.status}
+                        {isApproved ? 'Verified' : isPending ? 'Review Required' : sub.status}
                       </span>
                     </td>
                     <td className="text-caption text-tabular">

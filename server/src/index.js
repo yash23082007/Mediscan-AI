@@ -1,3 +1,5 @@
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -5,6 +7,8 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
+const axios = require('axios');
+const { randomUUID } = require('crypto');
 
 const authRoutes = require('./routes/auth.routes');
 const patientRoutes = require('./routes/patient.routes');
@@ -12,10 +16,17 @@ const doctorRoutes = require('./routes/doctor.routes');
 const diagnosisRoutes = require('./routes/diagnosis.routes');
 const questionnaireRoutes = require('./routes/questionnaire.routes');
 const feedbackRoutes = require('./routes/feedback.routes');
-const { errorHandler } = require('./utils/errors');
+const { AppError, errorHandler } = require('./utils/errors');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+app.use((req, res, next) => {
+  const requestId = req.get('x-request-id') || randomUUID();
+  req.requestId = requestId;
+  res.setHeader('x-request-id', requestId);
+  next();
+});
 
 // ============================================
 // SECURITY MIDDLEWARE
@@ -32,7 +43,7 @@ app.use(cors({
     if (corsOrigin === '*' || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
       return callback(null, true);
     }
-    return callback(null, true);
+    return callback(new AppError('Origin not allowed by CORS policy', 403));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
@@ -66,6 +77,28 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     service: 'medical-diagnosis-api',
     version: '1.0.0'
+  });
+});
+
+app.get('/api/health/ready', async (req, res) => {
+  const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:5000';
+  let aiEngine = 'unavailable';
+
+  try {
+    const aiResponse = await axios.get(`${aiEngineUrl}/health`, { timeout: 3000 });
+    if (aiResponse.status === 200 && aiResponse.data?.status === 'healthy') {
+      aiEngine = 'healthy';
+    }
+  } catch (error) {
+    console.warn(`AI engine readiness check failed: ${error.message}`);
+  }
+
+  const ready = aiEngine === 'healthy';
+  res.status(ready ? 200 : 503).json({
+    status: ready ? 'ready' : 'not_ready',
+    timestamp: new Date().toISOString(),
+    service: 'medical-diagnosis-api',
+    dependencies: { aiEngine }
   });
 });
 

@@ -17,14 +17,15 @@ import ClinicalDisclaimer from '@/components/ClinicalDisclaimer'
 import EmergencyNotice from '@/components/EmergencyNotice'
 
 export default function PatientDashboard() {
-  const { user, authFetch } = useAuth()
+  const { user, authFetch, loading: authLoading } = useAuth()
   const [history, setHistory] = useState([])
   const [gamification, setGamification] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (authLoading || !user) return
     loadData()
-  }, [])
+  }, [authLoading, authFetch, user])
 
   async function loadData() {
     try {
@@ -45,11 +46,14 @@ export default function PatientDashboard() {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center" style={{ minHeight: '55vh' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div className="spinner spinner-lg mb-2" style={{ margin: '0 auto' }}></div>
-          <p className="text-caption">Retrieving confidential health records...</p>
+      <div className="dashboard-skeleton" aria-label="Loading health workspace" role="status">
+        <div className="skeleton skeleton-eyebrow" />
+        <div className="skeleton skeleton-title" />
+        <div className="skeleton skeleton-copy" />
+        <div className="grid-3">
+          {[1, 2, 3].map(item => <div key={item} className="clinical-card skeleton-card"><div className="skeleton skeleton-line" /><div className="skeleton skeleton-number" /></div>)}
         </div>
+        <span className="text-caption">Retrieving confidential health records...</span>
       </div>
     )
   }
@@ -60,7 +64,7 @@ export default function PatientDashboard() {
   return (
     <div className="animate-calm-fade">
       {/* Workspace Header */}
-      <div style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+      <div className="workspace-hero" style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <div className="eyebrow-clinical mb-1">Personal Health Workspace</div>
           <h1 className="heading-xl" style={{ fontSize: '1.75rem' }}>
@@ -71,7 +75,7 @@ export default function PatientDashboard() {
           </p>
         </div>
 
-        <Link href="/questionnaire" className="btn btn-primary" id="start-checkup">
+        <Link href="/questionnaire" className="btn btn-primary workspace-primary-action" id="start-checkup">
           <IconStethoscope size={18} />
           <span>New Symptom Assessment</span>
         </Link>
@@ -82,7 +86,7 @@ export default function PatientDashboard() {
 
       {/* Status Highlights */}
       <div className="grid-3 mb-4">
-        <div className="clinical-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+        <div className="clinical-card workspace-stat-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <span className="text-caption" style={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Recorded Assessments
@@ -96,7 +100,7 @@ export default function PatientDashboard() {
           </div>
         </div>
 
-        <div className="clinical-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+        <div className="clinical-card workspace-stat-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <span className="text-caption" style={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Physician Oversight
@@ -110,7 +114,7 @@ export default function PatientDashboard() {
           </div>
         </div>
 
-        <div className="clinical-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+        <div className="clinical-card workspace-stat-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <span className="text-caption" style={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Active Baseline Profile
@@ -133,12 +137,12 @@ export default function PatientDashboard() {
             Recent Clinical Records
           </h2>
           <Link href="/health-report" className="text-caption" style={{ color: 'var(--clinical-teal)', fontWeight: 600 }}>
-            View Complete Health Document â†’
+            View Complete Health Document →
           </Link>
         </div>
 
         {history.length === 0 ? (
-          <div className="clinical-panel-subtle text-center" style={{ padding: '3.5rem 1.5rem' }}>
+          <div className="clinical-panel-subtle workspace-empty-state text-center" style={{ padding: '3.5rem 1.5rem' }}>
             <div style={{
               width: 44,
               height: 44,
@@ -214,7 +218,7 @@ export default function PatientDashboard() {
                       </td>
                       <td>
                         <span className={`triage-tier-badge ${isApproved ? 'routine' : isPending ? 'moderate' : 'urgent'}`}>
-                          {isApproved ? 'âœ“ Verified by Doctor' : isPending ? 'In Clinician Review' : record.status}
+                          {isApproved ? 'Verified by Doctor' : isPending ? 'In Clinician Review' : record.status}
                         </span>
                       </td>
                       <td style={{ textAlign: 'right' }}>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
@@ -29,11 +29,7 @@ export default function ReviewPage() {
   const [correctionConfidence, setCorrectionConfidence] = useState(0.8)
   const [success, setSuccess] = useState('')
 
-  useEffect(() => {
-    loadSubmission()
-  }, [id])
-
-  async function loadSubmission() {
+  const loadSubmission = useCallback(async () => {
     try {
       const res = await authFetch(`/doctors/submissions/${id}`)
       const data = await res.json()
@@ -44,7 +40,13 @@ export default function ReviewPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [authFetch, id])
+
+  useEffect(() => {
+    // Loading remote submission data is an intentional effect-driven state update.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadSubmission()
+  }, [loadSubmission])
 
   const handleSubmitFeedback = async (e) => {
     e.preventDefault()

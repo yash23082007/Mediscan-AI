@@ -12,13 +12,14 @@ import {
 import ClinicalDisclaimer from '@/components/ClinicalDisclaimer'
 
 export default function AnalyticsPage() {
-  const { authFetch } = useAuth()
+  const { authFetch, loading: authLoading } = useAuth()
   const [analytics, setAnalytics] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (authLoading) return
     loadAnalytics()
-  }, [])
+  }, [authLoading, authFetch])
 
   const loadAnalytics = async () => {
     try {
