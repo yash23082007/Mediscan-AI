@@ -187,7 +187,7 @@ export default function DatasetsPage() {
             Clinical Datasets &amp; Reference Corpora
           </h1>
           <p className="text-secondary mt-1" style={{ fontSize: '0.9375rem' }}>
-            Peer-reviewed clinical training datasets and benchmark evaluations powering the MediScan differential engine.
+            Peer-reviewed clinical training datasets and benchmark evaluations powering the MediscanAI differential engine.
           </p>
         </div>
         <Link href="/questionnaire" className="btn btn-primary btn-sm">

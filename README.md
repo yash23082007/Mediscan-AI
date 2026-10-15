@@ -1,4 +1,4 @@
-# Althea AI
+# MediscanAI
 
 Clinical decision support system and diagnostic triage platform built with Next.js, Express, and a Python Random Forest classification service.
 
@@ -6,13 +6,13 @@ Clinical decision support system and diagnostic triage platform built with Next.
 
 ## Medical Disclaimer
 
-Althea AI is an experimental decision-support tool designed for preliminary triage, research, and technical demonstration. It does not provide medical diagnoses, clinical treatment plans, or emergency services. Consult a qualified healthcare professional for medical concerns. In an emergency, contact local emergency services immediately.
+MediscanAI is an experimental decision-support tool designed for preliminary triage, research, and technical demonstration. It does not provide medical diagnoses, clinical treatment plans, or emergency services. Consult a qualified healthcare professional for medical concerns. In an emergency, contact local emergency services immediately.
 
 ---
 
 ## Overview
 
-Althea AI connects symptom intake questionnaires to a machine learning classifier and a doctor review workflow:
+MediscanAI connects symptom intake questionnaires to a machine learning classifier and a doctor review workflow:
 
 1. **Questionnaire**: An adaptive questionnaire guides patients through symptom assessment based on decision-tree routing.
 2. **Classification**: Patient responses are evaluated by a Random Forest model trained on a standard clinical dataset (4,920 records across 132 symptoms and 41 disease classes).

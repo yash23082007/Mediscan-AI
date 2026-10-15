@@ -49,7 +49,7 @@ function LoginForm() {
               <IconCaduceus size={20} color="#ffffff" />
             </div>
             <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: '1.375rem', letterSpacing: '-0.015em' }}>
-              MediScan
+              MediscanAI
             </span>
           </Link>
           <p className="text-caption mt-1">Clinical Symptom Assessment & Decision Support</p>
@@ -113,7 +113,7 @@ function LoginForm() {
 
           <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border-subtle)', textAlign: 'center' }}>
             <p className="text-caption">
-              New to MediScan?{' '}
+              New to MediscanAI?{' '}
               <Link href="/register" style={{ fontWeight: 600, color: 'var(--clinical-teal)' }}>
                 Create a patient account
               </Link>

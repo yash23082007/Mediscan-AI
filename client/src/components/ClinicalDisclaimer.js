@@ -5,7 +5,7 @@ export default function ClinicalDisclaimer({ compact = false, className = '' }) 
     return (
       <div className={`clinical-disclaimer-box ${className}`} style={{ padding: '0.875rem 1rem' }}>
         <p className="clinical-disclaimer-text" style={{ fontSize: '0.78125rem' }}>
-          <strong>Clinical Note:</strong> MediScan provides preliminary health information and triage guidance for educational purposes only. It does not establish a physician-patient relationship or constitute a definitive medical diagnosis. If you are experiencing acute distress, call emergency services immediately.
+          <strong>Clinical Note:</strong> MediscanAI provides preliminary health information and triage guidance for educational purposes only. It does not establish a physician-patient relationship or constitute a definitive medical diagnosis. If you are experiencing acute distress, call emergency services immediately.
         </p>
       </div>
     )
@@ -18,7 +18,7 @@ export default function ClinicalDisclaimer({ compact = false, className = '' }) 
         <span>Clinical Information & Safety Notice</span>
       </div>
       <p className="clinical-disclaimer-text">
-        MediScan is an informational triage and clinical decision-support tool designed to assist patients in understanding health symptoms.
+        MediscanAI is an informational triage and clinical decision-support tool designed to assist patients in understanding health symptoms.
         <strong> It is not a substitute for clinical judgment, diagnostic confirmation, or emergency medical treatment.</strong>
       </p>
       <p className="clinical-disclaimer-text mt-1">

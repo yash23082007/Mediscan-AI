@@ -65,11 +65,11 @@ export default function Home() {
       {/* Calm Clinical Header */}
       <header className="clinical-navbar" id="main-nav" role="banner">
         <div className="clinical-navbar-inner">
-          <Link href="/" className="clinical-brand" aria-label="MediScan Home">
+          <Link href="/" className="clinical-brand" aria-label="MediscanAI Home">
             <div className="clinical-brand-symbol" aria-hidden="true">
               <IconCaduceus size={18} color="#ffffff" />
             </div>
-            <span>MediScan</span>
+            <span>MediscanAI</span>
           </Link>
 
           <nav className="clinical-nav-links" aria-label="Primary Navigation">
@@ -104,7 +104,7 @@ export default function Home() {
               </h1>
 
               <p className="text-editorial-lead mb-4">
-                MediScan transforms uncertain health symptoms into structured, evidence-oriented clinical assessments. Designed for patient peace of mind and verified through clinician review.
+                MediscanAI transforms uncertain health symptoms into structured, evidence-oriented clinical assessments. Designed for patient peace of mind and verified through clinician review.
               </p>
 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.875rem', alignItems: 'center' }}>
@@ -133,14 +133,14 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Methodology: How MediScan Works */}
+        {/* Methodology: How MediscanAI Works */}
         <section id="how-it-works" style={{ padding: '3.5rem 0 4rem', borderBottom: '1px solid var(--border-subtle)' }}>
           <div className="container">
             <div className="mb-4" style={{ maxWidth: '640px' }}>
               <div className="eyebrow-clinical mb-1">Clinical Process</div>
               <h2 className="editorial-heading-lg mb-2">A measured, four-stage journey to clinical understanding.</h2>
               <p className="text-secondary" style={{ fontSize: '0.9375rem', lineHeight: 1.6 }}>
-                Unlike generic symptom checkers that present endless checklists, MediScan adapts to your specific presentation through decision trees and multi-dataset validation.
+                Unlike generic symptom checkers that present endless checklists, MediscanAI adapts to your specific presentation through decision trees and multi-dataset validation.
               </p>
             </div>
 
@@ -187,7 +187,7 @@ export default function Home() {
                   Calm, unhurried symptom evaluation.
                 </h3>
                 <p className="text-secondary mb-4" style={{ fontSize: '0.875rem', lineHeight: 1.6 }}>
-                  When health symptoms appear, uncertainty is overwhelming. MediScan provides a quiet, focused environment that listens to your condition, explains why each question is asked, and provides actionable steps.
+                  When health symptoms appear, uncertainty is overwhelming. MediscanAI provides a quiet, focused environment that listens to your condition, explains why each question is asked, and provides actionable steps.
                 </p>
                 <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.625rem', marginBottom: '1.75rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
                   <li style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -275,7 +275,7 @@ export default function Home() {
             <div className="clinical-brand-symbol" style={{ width: 24, height: 24 }}>
               <IconCaduceus size={14} color="#ffffff" />
             </div>
-            <span style={{ fontWeight: 600, fontSize: '0.9375rem', letterSpacing: '-0.01em' }}>MediScan</span>
+            <span style={{ fontWeight: 600, fontSize: '0.9375rem', letterSpacing: '-0.01em' }}>MediscanAI</span>
           </div>
 
           <p className="text-caption mb-2">
@@ -283,7 +283,7 @@ export default function Home() {
           </p>
 
           <p className="text-caption" style={{ maxWidth: '680px', margin: '0.5rem auto 0', fontSize: '0.75rem' }}>
-            Notice: MediScan provides informational health assessments based on clinical algorithms and validated medical datasets. It does not replace clinical consultation with a qualified medical professional. Always consult your doctor for diagnosis and treatment.
+            Notice: MediscanAI provides informational health assessments based on clinical algorithms and validated medical datasets. It does not replace clinical consultation with a qualified medical professional. Always consult your doctor for diagnosis and treatment.
           </p>
         </div>
       </footer>
