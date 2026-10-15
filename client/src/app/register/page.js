@@ -81,7 +81,7 @@ function RegisterForm() {
               <IconCaduceus size={20} color="#ffffff" />
             </div>
             <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: '1.375rem', letterSpacing: '-0.015em' }}>
-              MediScan
+              MediscanAI
             </span>
           </Link>
           <p className="text-caption mt-1">Patient Profile & Clinical Intake</p>
@@ -278,7 +278,7 @@ function RegisterForm() {
               {/* Informational consent notice */}
               <div className="clinical-panel-subtle mb-3" style={{ padding: '0.875rem 1rem' }}>
                 <p className="text-caption" style={{ fontSize: '0.75rem', lineHeight: 1.5 }}>
-                  By registering, you acknowledge that MediScan is an informational triage and clinical decision-support tool. It does not replace clinical consultation with a healthcare provider.
+                  By registering, you acknowledge that MediscanAI is an informational triage and clinical decision-support tool. It does not replace clinical consultation with a healthcare provider.
                 </p>
               </div>
 

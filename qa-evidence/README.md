@@ -1,4 +1,4 @@
-# MediScan QA Evidence Pack
+# MediscanAI QA Evidence Pack
 
 This folder is the release evidence package for the local web application.
 

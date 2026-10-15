@@ -17,11 +17,11 @@ function DashboardNav() {
   return (
     <header className="clinical-navbar" id="dashboard-nav" role="banner">
       <div className="clinical-navbar-inner">
-        <Link href="/" className="clinical-brand" aria-label="MediScan Home">
+        <Link href="/" className="clinical-brand" aria-label="MediscanAI Home">
           <div className="clinical-brand-symbol" aria-hidden="true">
             <IconCaduceus size={18} color="#ffffff" />
           </div>
-          <span>MediScan</span>
+          <span>MediscanAI</span>
         </Link>
 
         <nav className="clinical-nav-links" aria-label="Dashboard Navigation">
@@ -170,7 +170,7 @@ function DashboardShell({ children }) {
         <div className="clinical-footer-inner">
           <ClinicalDisclaimer compact />
           <div style={{ marginTop: '1.25rem', fontSize: '0.75rem', color: 'var(--text-caption)' }}>
-            MediScan Clinical Assessment & Triage System &bull; Confidential Patient Record System
+            MediscanAI Clinical Assessment & Triage System &bull; Confidential Patient Record System
           </div>
         </div>
       </footer>
