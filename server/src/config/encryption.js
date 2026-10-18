@@ -6,10 +6,16 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 // Parse 32-byte encryption key from hex, base64, or utf-8
 const getEncryptionKey = () => {
+<<<<<<< HEAD
   const rawKey = process.env.ENCRYPTION_KEY;
 
   if (isProduction && (!rawKey || rawKey.includes('0123456789abcdef'))) {
     throw new Error('FATAL: Insecure or default ENCRYPTION_KEY detected in production (SEC5/SEC14)');
+=======
+  const key = process.env.ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+  if (!key || key.length !== 64) {
+    throw new Error('ENCRYPTION_KEY must be a 64-character hex string (32 bytes)');
+>>>>>>> 6c758f0b735380f9091b3328fb200d10ff5cef85
   }
 
   const keyStr = rawKey || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';

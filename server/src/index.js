@@ -21,9 +21,12 @@ const { AppError, errorHandler } = require('./utils/errors');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+<<<<<<< HEAD
 // Trust reverse proxy for accurate IP identification on Render / Vercel (SEC9)
 app.set('trust proxy', 1);
 
+=======
+>>>>>>> 6c758f0b735380f9091b3328fb200d10ff5cef85
 app.use((req, res, next) => {
   const requestId = req.get('x-request-id') || randomUUID();
   req.requestId = requestId;
@@ -60,12 +63,16 @@ app.use(cors({
     if (configuredOrigins.includes(origin)) {
       return callback(null, true);
     }
+<<<<<<< HEAD
     // Development convenience for localhost
     if (process.env.NODE_ENV !== 'production' && /^http:\/\/localhost:\d+$/.test(origin)) {
       return callback(null, true);
     }
 
     return callback(new AppError('CORS origin denied by security policy', 403));
+=======
+    return callback(new AppError('Origin not allowed by CORS policy', 403));
+>>>>>>> 6c758f0b735380f9091b3328fb200d10ff5cef85
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -115,6 +122,7 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/health/ready', async (req, res) => {
   const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:5000';
+<<<<<<< HEAD
   const apiKey = process.env.AI_API_KEY;
   let aiEngine = 'unavailable';
 
@@ -122,6 +130,12 @@ app.get('/api/health/ready', async (req, res) => {
     const headers = {};
     if (apiKey) headers['X-API-Key'] = apiKey;
     const aiResponse = await axios.get(`${aiEngineUrl}/health`, { headers, timeout: 3000 });
+=======
+  let aiEngine = 'unavailable';
+
+  try {
+    const aiResponse = await axios.get(`${aiEngineUrl}/health`, { timeout: 3000 });
+>>>>>>> 6c758f0b735380f9091b3328fb200d10ff5cef85
     if (aiResponse.status === 200 && aiResponse.data?.status === 'healthy') {
       aiEngine = 'healthy';
     }
@@ -133,11 +147,16 @@ app.get('/api/health/ready', async (req, res) => {
   res.status(ready ? 200 : 503).json({
     status: ready ? 'ready' : 'not_ready',
     timestamp: new Date().toISOString(),
+<<<<<<< HEAD
     service: 'mediscan-api',
     checks: {
       database: 'healthy',
       ai_engine: aiEngine
     }
+=======
+    service: 'medical-diagnosis-api',
+    dependencies: { aiEngine }
+>>>>>>> 6c758f0b735380f9091b3328fb200d10ff5cef85
   });
 });
 

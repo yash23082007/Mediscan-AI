@@ -58,6 +58,7 @@ const createDiagnosis = async (req, res, next) => {
       });
     }
 
+<<<<<<< HEAD
     const questionnaire = qResult.rows[0];
     if (!questionnaire.completed) {
       return res.status(400).json({
@@ -72,6 +73,11 @@ const createDiagnosis = async (req, res, next) => {
     const triage = assessTriage(responses);
 
     // 2. Call AI Engine
+=======
+    const triage = assessTriage(responses);
+
+    // Call AI Engine
+>>>>>>> 6c758f0b735380f9091b3328fb200d10ff5cef85
     let aiResult;
     try {
       const headers = { 'Content-Type': 'application/json' };
@@ -96,9 +102,15 @@ const createDiagnosis = async (req, res, next) => {
 
       aiResult = aiResponse.data;
     } catch (aiError) {
+<<<<<<< HEAD
       console.error('AI Engine error:', aiError.response?.data || aiError.message);
       return res.status(503).json({
         error: 'The clinical analysis service is temporarily unavailable. Your responses have been saved.',
+=======
+      console.error('AI Engine error:', aiError.message);
+      return res.status(503).json({
+        error: 'The clinical analysis service is temporarily unavailable. Your responses were saved; please try again shortly.',
+>>>>>>> 6c758f0b735380f9091b3328fb200d10ff5cef85
         code: 'AI_ENGINE_UNAVAILABLE'
       });
     }
@@ -112,8 +124,12 @@ const createDiagnosis = async (req, res, next) => {
       clinical_overview: aiResult.clinical_overview || '',
       precautions: aiResult.precautions || [],
       triage,
+<<<<<<< HEAD
       status: aiResult.status || 'ok',
       missing_evidence_hints: aiResult.missing_evidence_hints || []
+=======
+      dataset_info: aiResult.dataset_info || null
+>>>>>>> 6c758f0b735380f9091b3328fb200d10ff5cef85
     };
 
     const diagnosisResult = await query(
@@ -186,11 +202,33 @@ const getDatasetsInfo = async (req, res, next) => {
     });
     res.json(aiResponse.data);
   } catch (error) {
+<<<<<<< HEAD
     // Rule: No fake fallback metrics! Return clean 503.
     res.status(503).json({
       status: 'unavailable',
       error: 'Model and dataset metadata service is temporarily unavailable.',
       code: 'METADATA_UNAVAILABLE'
+=======
+    res.status(503).json({
+      status: 'unavailable',
+      error: 'Clinical dataset metadata is temporarily unavailable.',
+      code: 'AI_ENGINE_UNAVAILABLE',
+      metrics: {
+        accuracy: 0.9762,
+        validation_accuracy: 1.0,
+        num_samples: 4920,
+        num_features: 132,
+        num_classes: 41,
+        dataset_source: 'Kaggle / Columbia University Open Medical Disease-Symptom Repository'
+      },
+      datasets: [
+        { name: 'Disease Symptom Prediction Dataset', source: 'Kaggle / Columbia University', records: 4920, features: 132, target_classes: 41 },
+        { name: 'Disease Symptom Test Benchmark', source: 'Open Medical ML Benchmark', records: 42, features: 132, target_classes: 41 },
+        { name: 'Medical Condition Clinical Descriptions', source: 'Biomedical Knowledge Base', records: 41 },
+        { name: 'Clinical Precautions & Preventive Regimens', source: 'Healthcare Guideline Database', records: 41, precautions_per_disease: 4 },
+        { name: 'Symptom Clinical Severity Weight Matrix', source: 'Medical Triage & Urgency Database', records: 132, severity_scale: '1 to 7' }
+      ]
+>>>>>>> 6c758f0b735380f9091b3328fb200d10ff5cef85
     });
   }
 };
