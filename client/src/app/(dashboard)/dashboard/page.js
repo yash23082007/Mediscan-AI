@@ -1,4 +1,3 @@
-/* eslint-disable */
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -68,7 +67,7 @@ export default function PatientDashboard() {
         <div>
           <div className="eyebrow-clinical mb-1">Personal Health Workspace</div>
           <h1 className="heading-xl" style={{ fontSize: '1.75rem' }}>
-            Health Overview &bull; {user?.name || 'Patient'}
+            Health Overview{user?.name ? ` • ${user.name}` : ''}
           </h1>
           <p className="text-secondary mt-1" style={{ fontSize: '0.9375rem' }}>
             Review past assessments, clinician feedback, and initiate new symptom consultations.
@@ -120,7 +119,7 @@ export default function PatientDashboard() {
               Active Baseline Profile
             </span>
             <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginTop: '0.5rem', lineHeight: 1.4 }}>
-              {user?.age ? `${user.age} yrs` : 'Profile active'}{user?.gender ? ` &bull; ${user.gender}` : ''}
+              {user?.age ? `${user.age} yrs` : 'Profile active'}{user?.gender ? ` • ${user.gender}` : ''}
             </div>
           </div>
           <div className="text-caption mt-2">

@@ -1,4 +1,3 @@
-/* eslint-disable */
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -61,7 +60,7 @@ export default function DoctorDashboard() {
             Physician Triage &amp; Review Workspace
           </h1>
           <p className="text-secondary mt-1" style={{ fontSize: '0.9375rem' }}>
-            Practitioner: <strong style={{ color: 'var(--text-primary)' }}>{user?.name || 'Dr. Practitioner'}</strong> &bull; Department of Clinical Triage &amp; Review
+            Practitioner: <strong style={{ color: 'var(--text-primary)' }}>{user?.name || 'Verified Clinician'}</strong> • Triage &amp; Review
           </p>
         </div>
 
@@ -171,7 +170,7 @@ export default function DoctorDashboard() {
                       {sub.patient_name}
                     </td>
                     <td className="text-caption text-tabular">
-                      {sub.patient_age ? `${sub.patient_age}y` : '—'} &bull; {sub.patient_gender || '—'}
+                      {sub.patient_age ? `${sub.patient_age}y` : '—'} • {sub.patient_gender || '—'}
                     </td>
                     <td style={{ fontWeight: 500 }}>
                       {sub.conditions?.[0]?.name || 'Assessment'}

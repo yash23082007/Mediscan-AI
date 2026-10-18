@@ -1,4 +1,3 @@
-/* eslint-disable */
 'use client'
 
 import { useState, useEffect, Suspense } from 'react'
@@ -117,8 +116,8 @@ function SubmissionsContent() {
                       {sub.patient_name}
                     </td>
                     <td className="text-caption text-tabular">
-                      {sub.patient_age ? `${sub.patient_age} yrs` : '—'} &bull; {sub.patient_gender || '—'}
-                      {sub.patient_weight && ` &bull; ${sub.patient_weight} kg`}
+                      {sub.patient_age ? `${sub.patient_age} yrs` : '—'} • {sub.patient_gender || '—'}
+                      {sub.patient_weight && ` • ${sub.patient_weight} kg`}
                     </td>
                     <td style={{ fontWeight: 500 }}>
                       {sub.conditions?.[0]?.name || 'Assessment'}

@@ -1,4 +1,3 @@
-/* eslint-disable */
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -190,7 +189,7 @@ export default function QuestionnairePage() {
         <div style={{ textAlign: 'center' }}>
           <div className="spinner spinner-lg mb-3" style={{ margin: '0 auto' }}></div>
           <h2 className="heading-sm mb-1">Initiating Clinical Consultation</h2>
-          <p className="text-caption">Calibrating adaptive inquiry based on your health baseline...</p>
+          <p className="text-caption">Loading your first clinical question...</p>
         </div>
       </div>
     )
@@ -268,7 +267,7 @@ export default function QuestionnairePage() {
             </button>
           )}
           <span className="question-counter">
-            Consultation Inquiry &bull; Item {answeredCount + 1}
+            Consultation Inquiry • Item {answeredCount + 1}
           </span>
         </div>
 

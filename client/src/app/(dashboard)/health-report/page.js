@@ -1,52 +1,51 @@
-/* eslint-disable */
 'use client'
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
 import {
-  IconCaduceus,
-  IconStethoscope,
-  IconShield,
-  IconFileText,
-  IconCheckCircle,
-  IconActivity,
-  IconUser
+  IconUser,
+  IconShield
 } from '@/components/Icons'
-import ClinicalDisclaimer from '@/components/ClinicalDisclaimer'
 import EmergencyNotice from '@/components/EmergencyNotice'
+import ClinicalDisclaimer from '@/components/ClinicalDisclaimer'
 
 export default function HealthReportPage() {
-  const { user, authFetch, loading: authLoading } = useAuth()
-  const [gamification, setGamification] = useState(null)
+  const { user, authFetch } = useAuth()
   const [history, setHistory] = useState([])
+  const [latestDiagnosis, setLatestDiagnosis] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (authLoading || !user) return
-    loadData()
-  }, [authLoading, authFetch, user])
+    async function loadData() {
+      try {
+        const [histRes, latestRes] = await Promise.all([
+          authFetch('/api/patients/history'),
+          authFetch('/api/diagnoses/latest')
+        ])
 
-  async function loadData() {
-    try {
-      const [gamRes, histRes] = await Promise.all([
-        authFetch(`/patients/${user?.id}/gamification`),
-        authFetch(`/patients/${user?.id}/history?limit=20`)
-      ])
-      const gamData = await gamRes.json()
-      const histData = await histRes.json()
-      setGamification(gamData.gamification || {})
-      setHistory(histData.history || [])
-    } catch (err) {
-      console.error('Health document load failure:', err)
-    } finally {
-      setLoading(false)
+        if (histRes.ok) {
+          const histData = await histRes.json()
+          setHistory(histData.history || [])
+        }
+
+        if (latestRes.ok) {
+          const latestData = await latestRes.json()
+          setLatestDiagnosis(latestData.diagnosis)
+        }
+      } catch (err) {
+        console.error('Failed to load health summary data:', err)
+      } finally {
+        setLoading(false)
+      }
     }
-  }
+
+    loadData()
+  }, [authFetch])
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center" style={{ minHeight: '60vh' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '360px' }}>
         <div style={{ textAlign: 'center' }}>
           <div className="spinner spinner-lg mb-2" style={{ margin: '0 auto' }}></div>
           <p className="text-caption">Compiling confidential personal health summary...</p>
@@ -55,35 +54,11 @@ export default function HealthReportPage() {
     )
   }
 
-  const totalCheckups = gamification?.total_checkups || history.length || 0
   const reviewedCheckups = history.filter(h => h.status === 'approved' || h.status === 'corrected').length
 
-  const clinicalPreventiveProtocols = [
-    {
-      category: 'Pulmonary & Respiratory',
-      title: 'Airway Hygiene & Respiratory Health',
-      guidance: 'Avoid environmental triggers (fine particulate matter, tobacco smoke, cold air shock). Practice diaphragmatic breathing to support functional lung capacity.',
-      monitoring: 'Monitor peak flow or note shortness of breath triggers.'
-    },
-    {
-      category: 'Cardiovascular Health',
-      title: 'Circulatory & Blood Pressure Vigilance',
-      guidance: 'Maintain regular moderate aerobic activity (150 minutes weekly) and prioritize balanced sodium intake to support endothelial function.',
-      monitoring: 'Schedule annual ambulatory blood pressure checks.'
-    },
-    {
-      category: 'Metabolic & Hydration',
-      title: 'Metabolic Balance & Glycemic Stability',
-      guidance: 'Prioritize fiber-rich whole nutrition with lean proteins. Maintain consistent daily hydration (2.0 to 2.5 liters) to support renal filtration.',
-      monitoring: 'Review annual lipid and fasting glucose markers.'
-    },
-    {
-      category: 'Restorative Immunology',
-      title: 'Sleep Architecture & Stress Physiology',
-      guidance: 'Sustain 7 to 9 hours of uninterrupted restorative sleep. Chronic nocturnal awakenings suppress cellular immunity and elevate inflammatory markers.',
-      monitoring: 'Establish consistent circadian sleep schedules.'
-    }
-  ]
+  // Extract real precautions from the patient's own latest assessment (F12)
+  const realPrecautions = latestDiagnosis?.feature_contributions?.precautions || []
+  const primaryCondition = latestDiagnosis?.conditions?.[0]?.name || null
 
   return (
     <div className="animate-calm-fade" style={{ maxWidth: '880px', margin: '0 auto' }}>
@@ -104,7 +79,7 @@ export default function HealthReportPage() {
             Personal Health Assessment Document
           </h1>
           <p className="text-caption mt-1">
-            Patient: <strong style={{ color: 'var(--text-primary)' }}>{user?.name || 'Patient'}</strong> &bull; Record ID: <span className="text-tabular">{user?.id?.slice(0, 8) || 'MED-001'}</span> &bull; Generated: <span className="text-tabular">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+            Patient: <strong style={{ color: 'var(--text-primary)' }}>{user?.name || '—'}</strong> • Record ID: <span className="text-tabular">{user?.id ? user.id.slice(0, 8) : '—'}</span> • Generated: <span className="text-tabular">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
           </p>
         </div>
 
@@ -128,93 +103,73 @@ export default function HealthReportPage() {
       <div className="clinical-card mb-4" style={{ padding: '1.75rem' }}>
         <h2 className="heading-sm mb-3" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <IconUser size={18} color="var(--clinical-teal)" />
-          Patient Baseline Profile & Consultation Consistency
+          Patient Baseline Profile & Consultation History
         </h2>
 
         <div className="grid-4" style={{ gap: '1rem' }}>
           <div className="clinical-panel-subtle" style={{ padding: '0.875rem 1rem' }}>
             <span className="text-caption">Baseline Demographics</span>
             <div style={{ fontWeight: 600, fontSize: '0.9375rem', marginTop: '0.25rem', color: 'var(--text-primary)' }}>
-              {user?.age ? `${user.age} Years` : 'Recorded'}{user?.gender ? ` &bull; ${user.gender}` : ''}
+              {user?.age ? `${user.age} Years` : 'Age unrecorded'}{user?.gender ? ` • ${user.gender}` : ''}
             </div>
           </div>
 
           <div className="clinical-panel-subtle" style={{ padding: '0.875rem 1rem' }}>
             <span className="text-caption">Body Metrics</span>
             <div style={{ fontWeight: 600, fontSize: '0.9375rem', marginTop: '0.25rem', color: 'var(--text-primary)' }}>
-              {user?.weight ? `${user.weight} kg` : 'Weight unrecorded'}{user?.height ? ` &bull; ${user.height} cm` : ''}
+              {user?.weight ? `${user.weight} kg` : 'Weight unrecorded'}{user?.height ? ` • ${user.height} cm` : ''}
             </div>
           </div>
 
           <div className="clinical-panel-subtle" style={{ padding: '0.875rem 1rem' }}>
-            <span className="text-caption">Total Checkups</span>
-            <div style={{ fontWeight: 600, fontSize: '0.9375rem', marginTop: '0.25rem', color: 'var(--text-primary)' }}>
-              {totalCheckups} Consultations
-            </div>
-          </div>
-
-          <div className="clinical-panel-subtle" style={{ padding: '0.875rem 1rem' }}>
-            <span className="text-caption">Physician Oversight</span>
+            <span className="text-caption">Total Consultations</span>
             <div style={{ fontWeight: 600, fontSize: '0.9375rem', marginTop: '0.25rem', color: 'var(--clinical-teal)' }}>
+              {history.length} Completed
+            </div>
+          </div>
+
+          <div className="clinical-panel-subtle" style={{ padding: '0.875rem 1rem' }}>
+            <span className="text-caption">Physician Reviews</span>
+            <div style={{ fontWeight: 600, fontSize: '0.9375rem', marginTop: '0.25rem', color: 'var(--clinical-forest)' }}>
               {reviewedCheckups} Verified
             </div>
           </div>
         </div>
-
-        {(user?.allergies || user?.chronic_conditions) && (
-          <div style={{ marginTop: '1rem', paddingTop: '0.875rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
-            {user?.allergies && (
-              <div className="text-caption">
-                <strong>Recorded Allergies:</strong> {user.allergies}
-              </div>
-            )}
-            {user?.chronic_conditions && (
-              <div className="text-caption">
-                <strong>Chronic Health Factors:</strong> {user.chronic_conditions}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* Longitudinal Assessment Timeline */}
-      <div className="clinical-card mb-4" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 className="heading-sm" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <IconFileText size={18} color="var(--clinical-teal)" />
-            Longitudinal Assessment Records
-          </h2>
-          <span className="text-caption text-tabular">
-            {history.length} Record{history.length === 1 ? '' : 's'} on file
-          </span>
-        </div>
+      {/* Clinical Consultation History Table */}
+      <div className="clinical-card mb-4" style={{ padding: '1.75rem' }}>
+        <h2 className="heading-sm mb-3">
+          Clinical Consultation Records
+        </h2>
 
         {history.length === 0 ? (
-          <div style={{ padding: '2.5rem', textAlign: 'center' }}>
-            <p className="text-secondary" style={{ fontSize: '0.875rem' }}>
-              No longitudinal records currently stored.
-            </p>
+          <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
+            <p className="text-secondary mb-2">No prior consultations recorded.</p>
+            <Link href="/questionnaire" className="btn btn-secondary btn-sm">
+              Start Your First Assessment
+            </Link>
           </div>
         ) : (
           <table className="clinical-table">
             <thead>
               <tr>
-                <th>Consultation Date</th>
+                <th>Date</th>
                 <th>Primary Clinical Impression</th>
-                <th>Statistical Correlation</th>
-                <th>Clinical Verification</th>
-                <th style={{ textAlign: 'right' }}>Document</th>
+                <th>Model Estimate</th>
+                <th>Triage Review Status</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {history.map((record, i) => {
+              {history.map((record) => {
                 const primary = record.conditions?.[0]
                 const conf = primary?.confidence || 0
-                const isApproved = record.status === 'approved'
+                const isApproved = record.status === 'approved' || record.status === 'reviewed'
 
                 return (
-                  <tr key={record.id || i}>
-                    <td className="text-tabular" style={{ fontWeight: 500 }}>
+                  <tr key={record.id}>
+                    <td className="text-tabular">
                       {new Date(record.created_at).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
@@ -226,12 +181,12 @@ export default function HealthReportPage() {
                     </td>
                     <td>
                       <span className="text-caption text-tabular">
-                        {Math.round(conf * 100)}% correlation
+                        {Math.round(conf * 100)}% estimate
                       </span>
                     </td>
                     <td>
                       <span className={`triage-tier-badge ${isApproved ? 'routine' : 'moderate'}`}>
-                        {isApproved ? 'Verified by Doctor' : 'Under Review'}
+                        {isApproved ? 'Verified by Clinician' : 'Pending Review'}
                       </span>
                     </td>
                     <td style={{ textAlign: 'right' }}>
@@ -251,35 +206,28 @@ export default function HealthReportPage() {
         )}
       </div>
 
-      {/* Evidence-Based Clinical Preventive Regimens */}
-      <div className="clinical-card mb-6" style={{ padding: '1.75rem' }}>
-        <h2 className="heading-sm mb-3" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <IconShield size={18} color="var(--clinical-teal)" />
-          Evidence-Based Clinical Health Guidance
-        </h2>
-        <p className="text-caption mb-3">
-          Physician-curated lifestyle and preventive health protocols tailored to ongoing symptom monitoring.
-        </p>
+      {/* Evidence-Based Condition Precautions */}
+      {realPrecautions.length > 0 && (
+        <div className="clinical-card mb-6" style={{ padding: '1.75rem' }}>
+          <h2 className="heading-sm mb-3" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <IconShield size={18} color="var(--clinical-teal)" />
+            Clinical Guidance for {primaryCondition || 'Identified Symptoms'}
+          </h2>
+          <p className="text-caption mb-3">
+            Actionable care guidelines sourced from official medical health protocols for this condition:
+          </p>
 
-        <div className="grid-2" style={{ gap: '1rem' }}>
-          {clinicalPreventiveProtocols.map((protocol, i) => (
-            <div key={i} className="clinical-panel-subtle" style={{ padding: '1.25rem' }}>
-              <div className="eyebrow-clinical" style={{ fontSize: '0.6875rem', marginBottom: '0.25rem' }}>
-                {protocol.category}
+          <div className="grid-2" style={{ gap: '1rem' }}>
+            {realPrecautions.map((precaution, i) => (
+              <div key={i} className="clinical-panel-subtle" style={{ padding: '1rem' }}>
+                <div style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-primary)' }}>
+                  {i + 1}. {precaution.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                </div>
               </div>
-              <div style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
-                {protocol.title}
-              </div>
-              <p className="text-secondary" style={{ fontSize: '0.8125rem', lineHeight: 1.55, marginBottom: '0.75rem' }}>
-                {protocol.guidance}
-              </p>
-              <div className="text-caption" style={{ fontSize: '0.75rem', borderTop: '1px solid var(--border-subtle)', paddingTop: '0.5rem' }}>
-                <strong>Recommendation:</strong> {protocol.monitoring}
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Official Medical Disclaimer */}
       <ClinicalDisclaimer />

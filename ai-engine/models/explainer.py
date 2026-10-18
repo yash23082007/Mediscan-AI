@@ -1,7 +1,7 @@
 """
-Explainable AI (XAI) Module
-Generates clinically grounded, human-readable explanations for AI diagnoses using feature contribution analysis,
-authentic medical descriptions, precautions, and severity ratings from open-source internet datasets.
+Explainable AI (XAI) Module: Evidence Ledger
+Generates honest symptom contribution scores for and against each clinical condition
+based on disease-symptom association profiles and reported presentation.
 """
 
 from config import Config
@@ -10,230 +10,159 @@ from models.dataset_loader import MedicalDatasetKB
 
 class DiagnosisExplainer:
     """
-    Generates explanations for diagnosis predictions.
-    Integrates clinical knowledge base (descriptions, precautions, severity weights).
+    Generates evidence ledger explanations for diagnosis predictions.
+    Produces supporting and opposing symptom contributions.
     """
-    
+
     def __init__(self):
         self.kb = MedicalDatasetKB.get_instance()
         self.symptom_display_names = {
-            'high_fever': 'High Body Temperature (Fever)',
-            'mild_fever': 'Mild/Moderate Fever',
-            'cough': 'Persistent Cough',
-            'phlegm': 'Mucus/Sputum Production',
-            'blood_in_sputum': 'Hemoptysis (Blood in Cough)',
-            'headache': 'Headache / Cephalea',
-            'muscle_pain': 'Myalgia / Body Aches',
-            'fatigue': 'Systemic Fatigue / Malaise',
+            'high_fever': 'High Fever',
+            'mild_fever': 'Mild / Moderate Fever',
+            'cough': 'Cough',
+            'phlegm': 'Mucus / Sputum',
+            'blood_in_sputum': 'Coughing Blood (Hemoptysis)',
+            'headache': 'Headache',
+            'muscle_pain': 'Muscle Aches (Myalgia)',
+            'fatigue': 'Fatigue / Malaise',
             'chills': 'Chills & Rigors',
             'shivering': 'Shivering',
-            'sweating': 'Diaphoresis (Heavy Sweating)',
-            'throat_irritation': 'Pharyngeal Irritation / Sore Throat',
-            'patches_in_throat': 'Exudates / Patches in Throat',
-            'runny_nose': 'Rhinorrhea / Runny Nose',
-            'continuous_sneezing': 'Paroxysmal Sneezing',
+            'sweating': 'Night Sweats / Heavy Sweating',
+            'throat_irritation': 'Sore Throat',
+            'runny_nose': 'Runny Nose',
+            'continuous_sneezing': 'Sneezing',
             'congestion': 'Nasal Congestion',
-            'loss_of_smell': 'Anosmia (Loss of Smell)',
-            'breathlessness': 'Dyspnea / Shortness of Breath',
-            'chest_pain': 'Thoracic / Chest Discomfort',
+            'loss_of_smell': 'Loss of Smell / Taste',
+            'breathlessness': 'Shortness of Breath (Dyspnea)',
+            'chest_pain': 'Chest Pain / Pressure',
             'nausea': 'Nausea',
-            'vomiting': 'Emesis (Vomiting)',
-            'diarrhoea': 'Diarrhea / Loose Stools',
-            'constipation': 'Bowel Constipation',
-            'passage_of_gases': 'Abdominal Flatulence',
+            'vomiting': 'Vomiting',
+            'diarrhoea': 'Diarrhea',
+            'constipation': 'Constipation',
+            'passage_of_gases': 'Abdominal Gas / Bloating',
             'distention_of_abdomen': 'Abdominal Distention',
-            'abdominal_pain': 'Abdominal Pain / Cramps',
-            'belly_pain': 'Localized Belly Pain',
-            'loss_of_appetite': 'Anorexia (Loss of Appetite)',
-            'acidity': 'Gastric Acidity / Heartburn',
-            'indigestion': 'Dyspepsia / Indigestion',
-            'joint_pain': 'Arthralgia (Joint Pain)',
-            'swelling_joints': 'Articular Joint Swelling',
-            'back_pain': 'Lumbar Back Pain',
-            'neck_pain': 'Cervical Neck Pain',
-            'stiff_neck': 'Nuchal Rigidity (Neck Stiffness)',
-            'muscle_weakness': 'Peripheral Muscle Weakness',
-            'itching': 'Pruritus (Severe Itching)',
-            'internal_itching': 'Internal Itching Sensation',
-            'skin_rash': 'Cutaneous Skin Rash',
-            'red_spots_over_body': 'Petechiae / Red Spots',
-            'blister': 'Vesicular Blisters',
-            'nodal_skin_eruptions': 'Nodal Skin Eruptions',
-            'anxiety': 'Anxiety / Apprehension',
-            'restlessness': 'Psychomotor Restlessness',
-            'depression': 'Low Mood / Depressive State',
-            'irritability': 'Nervous Irritability',
-            'lethargy': 'Lethargy & Drowsiness'
+            'abdominal_pain': 'Abdominal Pain',
+            'belly_pain': 'Belly Pain',
+            'loss_of_appetite': 'Loss of Appetite',
+            'acidity': 'Acidity / Heartburn',
+            'indigestion': 'Indigestion',
+            'joint_pain': 'Joint Pain (Arthralgia)',
+            'swelling_joints': 'Swollen Joints',
+            'back_pain': 'Back Pain',
+            'neck_pain': 'Neck Pain',
+            'stiff_neck': 'Neck Stiffness',
+            'muscle_weakness': 'Muscle Weakness',
+            'itching': 'Itching (Pruritus)',
+            'internal_itching': 'Internal Itching',
+            'skin_rash': 'Skin Rash',
+            'red_spots_over_body': 'Red Spots / Petechiae',
+            'blister': 'Blisters',
+            'anxiety': 'Anxiety',
+            'restlessness': 'Restlessness',
+            'depression': 'Low Mood / Depressive Feelings',
+            'lethargy': 'Extreme Lethargy'
         }
-    
-    def explain(self, patient, symptoms, predictions):
+
+    def explain(self, patient, symptoms, prediction_result):
         """
-        Generate comprehensive clinical explanation for the predictions.
-        
-        Returns:
-            dict with 'summary', 'feature_contributions', 'reasoning', 'precautions', 'clinical_overview'
+        Generate evidence ledger with positive and negative contributing factors.
         """
-        if not predictions:
+        if not prediction_result or not isinstance(prediction_result, dict):
             return {
-                'summary': 'Unable to generate explanation.',
+                'summary': 'Unable to formulate clinical explanation.',
                 'feature_contributions': {},
                 'reasoning': [],
                 'precautions': [],
                 'clinical_overview': ''
             }
-        
-        top_condition = predictions[0]
-        raw_condition = top_condition['condition']
-        condition_name = Config.CONDITION_DISPLAY_NAMES.get(raw_condition, raw_condition)
-        confidence = top_condition['confidence']
-        
-        # Clinical description & precautions from internet knowledge base
-        clinical_desc = top_condition.get('description') or self.kb.get_description(raw_condition)
-        precautions = top_condition.get('precautions') or self.kb.get_precautions(raw_condition)
-        
-        # Analyze contributing symptoms based on questionnaire & severity
-        contributions = self._analyze_contributions(symptoms, raw_condition)
-        
-        # Build summary
-        top_symptoms = sorted(contributions.items(), key=lambda x: abs(x[1]), reverse=True)[:5]
-        symptom_phrases = []
-        for symptom, weight in top_symptoms:
-            display = self.symptom_display_names.get(symptom, symptom.replace('_', ' ').title())
-            direction = '+' if weight > 0 else '-'
-            symptom_phrases.append(f"{display} ({direction}{abs(weight):.2f})")
-        
-        summary = f"Based on your clinical assessment, the AI model predicts {condition_name} "
-        summary += f"with {confidence * 100:.1f}% confidence. "
-        
-        if symptom_phrases:
-            summary += f"Key diagnostic indicators identified: {', '.join(symptom_phrases[:3])}. "
-            
-        if clinical_desc:
-            summary += f"Clinical profile: {clinical_desc[:250]}..."
-        
-        # Detailed diagnostic reasoning steps
-        reasoning = self._build_reasoning(symptoms, predictions, clinical_desc, precautions)
-        
+
+        status = prediction_result.get('status', 'ok')
+        if status == 'insufficient_evidence':
+            return {
+                'summary': prediction_result.get('explanation', 'Insufficient clinical symptoms.'),
+                'feature_contributions': {},
+                'reasoning': ['Reported symptoms are below the minimum threshold for differentiation.'],
+                'precautions': ['Record your temperature and monitor symptoms over the next 24 hours.'],
+                'clinical_overview': 'Assessment withheld due to lack of distinct diagnostic indicators.'
+            }
+
+        conditions = prediction_result.get('conditions', [])
+        if not conditions:
+            return {
+                'summary': 'No condition met the threshold for clinical likelihood.',
+                'feature_contributions': {},
+                'reasoning': [],
+                'precautions': [],
+                'clinical_overview': ''
+            }
+
+        top_condition = conditions[0]
+        raw_cond = top_condition.get('condition', '')
+        positive_symptoms = prediction_result.get('positive_symptoms', [])
+
+        # Build feature contributions for top condition
+        contributions = self._compute_evidence(raw_cond, positive_symptoms)
+
+        # Build reasoning bullets
+        reasoning = []
+        for sym, weight in sorted(contributions.items(), key=lambda x: x[1], reverse=True):
+            display = self.symptom_display_names.get(sym, sym.replace('_', ' ').title())
+            if weight > 0:
+                reasoning.append(f"Presence of {display} supports likelihood of {raw_cond}.")
+            elif weight < 0:
+                reasoning.append(f"Absence of expected {display} lowers likelihood of {raw_cond}.")
+
         return {
-            'summary': summary,
-            'clinical_overview': clinical_desc,
-            'precautions': precautions,
+            'summary': prediction_result.get('explanation', ''),
+            'clinical_overview': top_condition.get('description', ''),
+            'precautions': top_condition.get('precautions', []),
             'feature_contributions': {
                 self.symptom_display_names.get(k, k.replace('_', ' ').title()): round(v, 3)
                 for k, v in contributions.items()
-                if abs(v) > 0.01
             },
-            'reasoning': reasoning
+            'reasoning': reasoning[:6]
         }
-    
-    def _analyze_contributions(self, symptoms, condition):
+
+    def _compute_evidence(self, condition, positive_symptoms):
         """
-        Analyze how each symptom contributes to the prediction using
-        symptom presence weighted by clinical severity scores from internet dataset.
+        Compute disease-specific symptom evidence.
+        Positive value: symptom supports condition.
+        Negative value: absence of expected hallmark lowers condition likelihood.
         """
         contributions = {}
-        
-        # Check questionnaire responses
-        gen_sym = symptoms.get('q0000000-0000-0000-0000-000000000005', [])
-        if isinstance(gen_sym, str):
-            gen_sym = [gen_sym]
-            
-        fever_sev = symptoms.get('q0000000-0000-0000-0000-000000000002', '')
-        if fever_sev == 'high':
-            contributions['high_fever'] = self.kb.get_severity('high_fever') * 0.12
-        elif fever_sev in ['mild', 'moderate']:
-            contributions['mild_fever'] = self.kb.get_severity('mild_fever') * 0.08
-            
-        cough = symptoms.get('q0000000-0000-0000-0000-000000000004', '')
-        if cough in ['dry', 'productive', 'bloody']:
-            contributions['cough'] = self.kb.get_severity('cough') * 0.09
-        if cough == 'productive':
-            contributions['phlegm'] = self.kb.get_severity('phlegm') * 0.08
-            
-        for s in gen_sym:
-            if s == 'headache': contributions['headache'] = self.kb.get_severity('headache') * 0.08
-            if s == 'body_ache': contributions['muscle_pain'] = self.kb.get_severity('muscle_pain') * 0.08
-            if s == 'fatigue': contributions['fatigue'] = self.kb.get_severity('fatigue') * 0.07
-            if s == 'chills': contributions['chills'] = self.kb.get_severity('chills') * 0.09
-            if s == 'sweating': contributions['sweating'] = self.kb.get_severity('sweating') * 0.08
-            if s == 'sore_throat': contributions['throat_irritation'] = self.kb.get_severity('throat_irritation') * 0.08
-            if s == 'runny_nose': contributions['runny_nose'] = self.kb.get_severity('runny_nose') * 0.07
-            
-        # Breathlessness
-        if symptoms.get('q0000000-0000-0000-0000-000000000008', '') in ['mild', 'moderate', 'severe']:
-            contributions['breathlessness'] = self.kb.get_severity('breathlessness') * 0.11
-            
-        # Chest pain
-        if symptoms.get('q0000000-0000-0000-0000-000000000012', '') in ['sharp', 'dull', 'burning']:
-            contributions['chest_pain'] = self.kb.get_severity('chest_pain') * 0.12
-            
-        # Direct symptom inputs
-        if isinstance(symptoms, dict):
-            for k, val in symptoms.items():
-                if not k.startswith('q000') and val:
-                    clean = str(k).lower().replace(' ', '_')
-                    sev = self.kb.get_severity(clean)
-                    contributions[clean] = round(sev * 0.08, 3)
-                    
-        # If no specific matches found, provide baseline severity indicators
-        if not contributions:
-            contributions['Clinical Symptom Severity'] = 0.35
-            contributions['Risk Factor Stratification'] = 0.25
-            contributions['Epidemiological Profile'] = 0.20
-            
-        return contributions
-    
-    def _build_reasoning(self, symptoms, predictions, clinical_desc="", precautions=None):
-        """Construct structured explainability steps."""
-        reasoning = []
-        if not predictions:
-            return reasoning
-            
-        top = predictions[0]
-        top_name = Config.CONDITION_DISPLAY_NAMES.get(top['condition'], top['condition'])
-        
-        reasoning.append({
-            'step': 1,
-            'title': 'Clinical Pattern Matching',
-            'detail': f"Matched reported symptom presentation against 4,920 authentic patient diagnostic records and identified a high correlation with {top_name}."
-        })
-        
-        if clinical_desc:
-            reasoning.append({
-                'step': 2,
-                'title': 'Condition Pathology',
-                'detail': clinical_desc
-            })
-            
-        if len(predictions) > 1:
-            second = predictions[1]
-            sec_name = Config.CONDITION_DISPLAY_NAMES.get(second['condition'], second['condition'])
-            reasoning.append({
-                'step': 3,
-                'title': 'Differential Diagnosis',
-                'detail': f"Ruled {sec_name} ({second['confidence'] * 100:.1f}% probability) as the secondary differential diagnosis based on symptom specificity."
-            })
-            
-        if precautions:
-            reasoning.append({
-                'step': 4,
-                'title': 'Actionable Clinical Recommendations',
-                'detail': f"Recommended precautions: {', '.join(precautions)}."
-            })
-            
-        return reasoning
-        
-    def get_preventive_tips(self, conditions):
-        """Retrieve preventive precautions from internet clinical dataset for a list of conditions."""
-        tips = []
-        if not conditions:
-            return ["Consult a qualified medical specialist", "Rest and maintain optimal hydration"]
-            
-        for c in conditions:
-            c_name = c.get('condition_key', c.get('name', str(c))) if isinstance(c, dict) else str(c)
-            precautions = self.kb.get_precautions(c_name)
-            for p in precautions:
-                if p and p not in tips:
-                    tips.append(p)
-        return tips[:6]
+        pos_set = set(positive_symptoms)
 
+        # Hallmark clinical profiles for common primary conditions
+        HALLMARKS = {
+            'Malaria': {'high_fever': 0.35, 'chills': 0.40, 'sweating': 0.25, 'headache': 0.15, 'nausea': 0.10},
+            'Dengue': {'high_fever': 0.35, 'joint_pain': 0.30, 'skin_rash': 0.25, 'headache': 0.20, 'vomiting': 0.15},
+            'Typhoid': {'high_fever': 0.30, 'abdominal_pain': 0.25, 'headache': 0.20, 'fatigue': 0.20, 'diarrhoea': 0.15},
+            'Pneumonia': {'cough': 0.35, 'high_fever': 0.25, 'breathlessness': 0.35, 'phlegm': 0.20, 'chest_pain': 0.20},
+            'Common Cold': {'continuous_sneezing': 0.30, 'cough': 0.25, 'mild_fever': 0.20, 'headache': 0.15, 'throat_irritation': 0.20},
+            'Bronchial Asthma': {'breathlessness': 0.45, 'cough': 0.25, 'fatigue': 0.15},
+            'Tuberculosis': {'cough': 0.35, 'blood_in_sputum': 0.40, 'sweating': 0.30, 'fatigue': 0.25, 'mild_fever': 0.20},
+            'Heart attack': {'chest_pain': 0.55, 'breathlessness': 0.35, 'sweating': 0.30},
+            'GERD': {'acidity': 0.45, 'indigestion': 0.30, 'chest_pain': 0.20, 'cough': 0.10},
+            'Gastroenteritis': {'vomiting': 0.40, 'diarrhoea': 0.40, 'abdominal_pain': 0.25},
+            'Migraine': {'headache': 0.50, 'acidity': 0.15, 'depression': 0.15},
+            'Fungal infection': {'itching': 0.50, 'skin_rash': 0.35, 'nodal_skin_eruptions': 0.25},
+            'Allergy': {'continuous_sneezing': 0.40, 'shivering': 0.20, 'chills': 0.20}
+        }
+
+        hallmark = HALLMARKS.get(condition, {})
+
+        # If hallmark profile exists for this condition, compute supporting and opposing
+        if hallmark:
+            for sym, weight in hallmark.items():
+                if sym in pos_set:
+                    contributions[sym] = round(weight, 3)
+                else:
+                    # Penalty for missing key hallmark symptom
+                    contributions[sym] = round(-weight * 0.4, 3)
+        else:
+            # Generic mapping for other diseases
+            for s in positive_symptoms:
+                sev = self.kb.get_severity(s)
+                contributions[s] = round(sev * 0.05, 3)
+
+        return contributions

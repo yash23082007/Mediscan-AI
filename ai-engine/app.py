@@ -1,10 +1,10 @@
 """
-AI-Powered Medical Diagnosis Engine
-Flask REST API for symptom classification and adaptive questioning
+MediscanAI Clinical AI Engine
+REST API for calibrated symptom classification and explainability.
 """
 
 import os
-import json
+import hmac
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -13,16 +13,32 @@ load_dotenv()
 
 from config import Config
 from models.classifier import MedicalClassifier
-from models.decision_tree import AdaptiveDecisionTree
 from models.explainer import DiagnosisExplainer
 
 app = Flask(__name__)
-CORS(app)
+
+# Strict CORS: Only allow localhost during local dev; in production, accessed via private network (SEC11)
+CORS(app, origins=[
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001"
+])
 
 # Initialize AI components
 classifier = MedicalClassifier()
-decision_tree = AdaptiveDecisionTree()
 explainer = DiagnosisExplainer()
+
+AI_API_KEY = os.getenv('AI_API_KEY')
+
+def verify_api_key():
+    """Verify internal service API key in constant time (SEC11)."""
+    if not AI_API_KEY:
+        return True # Dev mode without key
+    auth_header = request.headers.get('X-API-Key')
+    if not auth_header or not hmac.compare_digest(auth_header, AI_API_KEY):
+        return False
+    return True
 
 # ============================================
 # HEALTH CHECK
@@ -31,9 +47,9 @@ explainer = DiagnosisExplainer()
 def health():
     return jsonify({
         'status': 'healthy',
-        'service': 'ai-engine',
+        'service': 'mediscan-ai',
         'model_loaded': classifier.is_loaded,
-        'version': '1.0.0'
+        'model_version': classifier.model_version
     })
 
 # ============================================
@@ -42,56 +58,65 @@ def health():
 @app.route('/predict', methods=['POST'])
 def predict():
     """
-    Predict top-3 diagnoses based on patient symptoms and demographics.
-    
-    Request body:
-    {
-        "patient": { "age": 35, "gender": "male", "weight": 75, "height": 175 },
-        "symptoms": { "question_id": "answer_value", ... }
-    }
+    Predict diagnoses based on patient symptoms.
+    Supports honest abstention (status: 'insufficient_evidence')
+    and calibrated probabilities.
     """
+    if not verify_api_key():
+        return jsonify({'error': 'Unauthorized service access'}), 401
+
     try:
-        data = request.get_json()
-        
+        data = request.get_json(silent=True)
         if not data:
-            return jsonify({'error': 'No data provided'}), 400
-        
+            return jsonify({'error': 'Invalid JSON body'}), 400
+
         patient = data.get('patient', {})
         symptoms = data.get('symptoms', {})
+
         if not isinstance(patient, dict):
             return jsonify({'error': 'patient must be an object'}), 400
-        if not isinstance(symptoms, (dict, list)) or not symptoms:
-            return jsonify({'error': 'at least one symptom is required'}), 400
-        
-        # Get predictions
-        predictions = classifier.predict(patient, symptoms)
-        
-        # Generate explanations
-        explanation = explainer.explain(patient, symptoms, predictions)
-        
-        # Format response
-        conditions = []
-        for pred in predictions[:3]:
-            display_name = Config.CONDITION_DISPLAY_NAMES.get(pred['condition'], pred['condition'])
-            conditions.append({
+        if not isinstance(symptoms, (dict, list)):
+            return jsonify({'error': 'symptoms must be an object or list'}), 400
+
+        # Run prediction through calibrated classifier
+        prediction_result = classifier.predict(patient, symptoms)
+
+        # Generate explanation ledger
+        explanation = explainer.explain(patient, symptoms, prediction_result)
+
+        # Format conditions with display names
+        formatted_conditions = []
+        for pred in prediction_result.get('conditions', []):
+            raw_cond = pred['condition']
+            display_name = Config.CONDITION_DISPLAY_NAMES.get(raw_cond, raw_cond)
+            formatted_conditions.append({
                 'name': display_name,
-                'condition_key': pred['condition'],
-                'confidence': round(pred['confidence'], 4)
+                'condition_key': raw_cond,
+                'confidence': pred['confidence'],
+                'description': pred.get('description', ''),
+                'precautions': pred.get('precautions', [])
             })
-        
+
         return jsonify({
-            'conditions': conditions,
-            'explanation': explanation['summary'],
+            'status': prediction_result.get('status', 'ok'),
+            'conditions': formatted_conditions,
+            'probability_vector': prediction_result.get('probability_vector', {}),
+            'explanation': explanation.get('summary', ''),
             'clinical_overview': explanation.get('clinical_overview', ''),
             'precautions': explanation.get('precautions', []),
-            'feature_contributions': explanation['feature_contributions'],
-            'reasoning': explanation['reasoning'],
-            'dataset_info': classifier.metrics
+            'feature_contributions': explanation.get('feature_contributions', {}),
+            'reasoning': explanation.get('reasoning', []),
+            'missing_evidence_hints': prediction_result.get('missing_evidence_hints', []),
+            'model_version': classifier.model_version
         })
-        
+
     except Exception as e:
-        print(f"Prediction error: {str(e)}")
-        return jsonify({'error': f'Prediction failed: {str(e)}'}), 500
+        # SEC12: Avoid leaking raw exception internals
+        print(f"[ERROR] Prediction failure: {e}", flush=True)
+        return jsonify({
+            'error': 'Clinical inference encountered an unexpected processing error',
+            'code': 'INFERENCE_ERROR'
+        }), 500
 
 # ============================================
 # DATASETS INFO ENDPOINT
@@ -99,8 +124,8 @@ def predict():
 @app.route('/datasets/info', methods=['GET'])
 def datasets_info():
     """
-    Return comprehensive metadata about the internet medical datasets used for training
-    and clinical knowledge inference.
+    Return authentic metadata about the clinical symptom training dataset (F9, F10).
+    Traceable to public Kaggle / UCI repositories.
     """
     return jsonify({
         'status': 'active',
@@ -109,144 +134,38 @@ def datasets_info():
         'conditions_count': len(classifier.label_encoder.classes_) if classifier.label_encoder else 41,
         'datasets': [
             {
-                'name': 'Disease Symptom Clinical Dataset',
-                'source': 'Kaggle / Columbia University',
+                'name': 'Disease-Symptom Training Profiles',
+                'source': 'Kaggle (Disease Prediction from Symptoms)',
+                'url': 'https://www.kaggle.com/datasets/itachi9604/disease-symptom-description-dataset',
                 'records': 4920,
+                'unique_profiles': 304,
                 'features': 132,
                 'target_classes': 41,
-                'type': 'Training Clinical Records'
+                'type': 'Synthetic symptom combination profiles based on clinical presentation templates'
             },
             {
-                'name': 'Disease-Symptom Benchmark Test Set',
-                'source': 'Open Clinical ML Benchmark',
-                'records': 42,
-                'features': 132,
-                'target_classes': 41,
-                'type': 'Independent Evaluation Set'
-            },
-            {
-                'name': 'Medical Disease Pathology Descriptions',
-                'source': 'Open Biomedical Knowledge Repository',
+                'name': 'Medical Condition Pathology Descriptions',
+                'source': 'Kaggle Medical Knowledge Base',
                 'records': 41,
-                'type': 'Clinical Descriptions'
+                'type': 'Condition etiology and pathology overviews'
             },
             {
-                'name': 'Symptom Precaution & Preventive Regimens',
-                'source': 'Healthcare Guideline Database',
+                'name': 'Clinical Precautions & Care Guidelines',
+                'source': 'Public Health Guidance Knowledge Base',
                 'records': 41,
                 'precautions_per_disease': 4,
-                'type': 'Patient Safety Guidelines'
+                'type': 'Non-pharmacological precautions and consultation advice'
             },
             {
-                'name': 'Symptom Triage Severity Weights',
-                'source': 'Clinical Triage Urgency Database',
+                'name': 'Symptom Clinical Severity Matrix',
+                'source': 'Emergency Medicine Triage Weights',
                 'records': 132,
                 'scale': '1 to 7',
-                'type': 'Severity Weight Matrix'
-            },
-            {
-                'name': 'Pima Indians Diabetes Diagnostic Dataset',
-                'source': 'NIDDK / UCI Machine Learning Repository',
-                'records': 768,
-                'features': 8,
-                'type': 'Biochemical Diagnostic Benchmarks'
+                'type': 'Relative symptom severity weights'
             }
         ]
     })
 
-
-# ============================================
-# ADAPTIVE QUESTION ENDPOINT
-# ============================================
-@app.route('/next-question', methods=['POST'])
-def next_question():
-    """
-    Determine the next best question based on current responses.
-    Uses information gain to select the most discriminating question.
-    
-    Request body:
-    {
-        "current_responses": { "question_id": "answer", ... },
-        "answered_questions": ["q1", "q2", ...]
-    }
-    """
-    try:
-        data = request.get_json()
-        
-        current_responses = data.get('current_responses', {})
-        answered_questions = data.get('answered_questions', [])
-        
-        next_q = decision_tree.get_next_question(current_responses, answered_questions)
-        
-        if next_q is None:
-            return jsonify({'completed': True, 'message': 'All relevant questions answered'})
-        
-        return jsonify({
-            'next_question_id': next_q['id'],
-            'confidence': next_q.get('confidence', 0),
-            'remaining_estimate': next_q.get('remaining', 0)
-        })
-        
-    except Exception as e:
-        print(f"Next question error: {str(e)}")
-        return jsonify({'error': f'Failed to determine next question: {str(e)}'}), 500
-
-# ============================================
-# RETRAIN ENDPOINT (Admin only)
-# ============================================
-@app.route('/retrain', methods=['POST'])
-def retrain():
-    """
-    Trigger model retraining with doctor feedback data.
-    """
-    try:
-        api_key = request.headers.get('X-API-Key', '')
-        if api_key != Config.AI_API_KEY:
-            return jsonify({'error': 'Unauthorized'}), 401
-        
-        result = classifier.retrain()
-        
-        return jsonify({
-            'message': 'Retraining completed',
-            'metrics': result
-        })
-        
-    except Exception as e:
-        print(f"Retraining error: {str(e)}")
-        return jsonify({'error': f'Retraining failed: {str(e)}'}), 500
-
-# ============================================
-# PREVENTIVE TIPS ENDPOINT
-# ============================================
-@app.route('/preventive-tips', methods=['POST'])
-def preventive_tips():
-    """
-    Generate preventive health tips based on diagnosed conditions.
-    """
-    try:
-        data = request.get_json()
-        conditions = data.get('conditions', [])
-        
-        tips = explainer.get_preventive_tips(conditions)
-        
-        return jsonify({'tips': tips})
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-# ============================================
-# RUN SERVER
-# ============================================
 if __name__ == '__main__':
-    # Ensure model directory exists
-    os.makedirs(Config.MODEL_PATH, exist_ok=True)
-    
-    # Train model if not already trained
-    if not classifier.is_loaded:
-        print("[INFO] Training initial model...")
-        classifier.train_initial_model()
-        print("[INFO] Model trained and saved")
-    
-    port = Config.FLASK_PORT
-    print(f"[INFO] AI Engine running on port {port}")
-    app.run(host='0.0.0.0', port=port, debug=Config.FLASK_ENV == 'development')
+    port = int(os.getenv('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)

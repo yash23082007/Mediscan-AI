@@ -170,7 +170,7 @@ function DashboardShell({ children }) {
         <div className="clinical-footer-inner">
           <ClinicalDisclaimer compact />
           <div style={{ marginTop: '1.25rem', fontSize: '0.75rem', color: 'var(--text-caption)' }}>
-            MediscanAI Clinical Assessment & Triage System &bull; Confidential Patient Record System
+            MediscanAI Clinical Assessment & Triage System • Confidential Patient Record System
           </div>
         </div>
       </footer>
