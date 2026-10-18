@@ -1,7 +1,23 @@
 const jwt = require('jsonwebtoken');
 
-const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'dev_access_secret';
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'dev_refresh_secret';
+const isProduction = process.env.NODE_ENV === 'production';
+
+const getAccessSecret = () => {
+  const secret = process.env.JWT_ACCESS_SECRET;
+  if (isProduction && (!secret || secret === 'dev_access_secret' || secret.length < 32)) {
+    throw new Error('FATAL: JWT_ACCESS_SECRET must be at least 32 characters in production (SEC5)');
+  }
+  return secret || 'dev_access_secret_for_local_development_only_minimum_32_characters';
+};
+
+const getRefreshSecret = () => {
+  const secret = process.env.JWT_REFRESH_SECRET;
+  if (isProduction && (!secret || secret === 'dev_refresh_secret' || secret.length < 32)) {
+    throw new Error('FATAL: JWT_REFRESH_SECRET must be at least 32 characters in production (SEC5)');
+  }
+  return secret || 'dev_refresh_secret_for_local_development_only_minimum_32_characters';
+};
+
 const ACCESS_EXPIRY = process.env.JWT_ACCESS_EXPIRY || '15m';
 const REFRESH_EXPIRY = process.env.JWT_REFRESH_EXPIRY || '7d';
 
@@ -9,28 +25,28 @@ const REFRESH_EXPIRY = process.env.JWT_REFRESH_EXPIRY || '7d';
  * Generate JWT access token
  */
 const generateAccessToken = (payload) => {
-  return jwt.sign(payload, ACCESS_SECRET, { expiresIn: ACCESS_EXPIRY });
+  return jwt.sign(payload, getAccessSecret(), { expiresIn: ACCESS_EXPIRY });
 };
 
 /**
  * Generate JWT refresh token
  */
 const generateRefreshToken = (payload) => {
-  return jwt.sign(payload, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRY });
+  return jwt.sign(payload, getRefreshSecret(), { expiresIn: REFRESH_EXPIRY });
 };
 
 /**
  * Verify JWT access token
  */
 const verifyAccessToken = (token) => {
-  return jwt.verify(token, ACCESS_SECRET);
+  return jwt.verify(token, getAccessSecret());
 };
 
 /**
  * Verify JWT refresh token
  */
 const verifyRefreshToken = (token) => {
-  return jwt.verify(token, REFRESH_SECRET);
+  return jwt.verify(token, getRefreshSecret());
 };
 
 /**

@@ -5,6 +5,9 @@ const { encrypt, decryptFields } = require('../config/encryption');
 const { createAuditLog } = require('../middleware/audit');
 const { sanitizeUser } = require('../utils/helpers');
 
+// Pre-computed dummy hash to prevent timing-based user enumeration attacks (SEC10)
+const DUMMY_HASH = '$2a$12$e8Yx9p8vJbVw7jC8lGZ.U.XGfK0v1M1QnQY0p7jO.5p1c0X5yH7eq';
+
 /**
  * Register a new patient
  * POST /api/auth/register/patient
@@ -12,17 +15,20 @@ const { sanitizeUser } = require('../utils/helpers');
 const registerPatient = async (req, res, next) => {
   try {
     const { name, email, password, age, gender, weight, height, allergies, chronic_conditions } = req.body;
+    const normalizedEmail = (email || '').toLowerCase().trim();
 
-    // Check if email already exists
-    const existing = await query('SELECT id FROM patients WHERE email = $1', [email]);
-    if (existing.rows.length > 0) {
+    // Check if email already exists in patients or doctors
+    const existingPatient = await query('SELECT id FROM patients WHERE email = $1', [normalizedEmail]);
+    const existingDoctor = await query('SELECT id FROM doctors WHERE email = $1', [normalizedEmail]);
+
+    if (existingPatient.rows.length > 0 || existingDoctor.rows.length > 0) {
       return res.status(409).json({ error: 'Email already registered' });
     }
 
     // Hash password
     const password_hash = await bcrypt.hash(password, 12);
 
-    // Encrypt sensitive fields
+    // Encrypt sensitive clinical fields
     const encryptedAllergies = allergies ? encrypt(allergies) : null;
     const encryptedConditions = chronic_conditions ? encrypt(chronic_conditions) : null;
 
@@ -31,18 +37,20 @@ const registerPatient = async (req, res, next) => {
       `INSERT INTO patients (name, email, password_hash, age, gender, weight, height, allergies, chronic_conditions, role)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'patient')
        RETURNING id, name, email, age, gender, weight, height, role, created_at`,
-      [name, email, password_hash, age, gender, weight || null, height || null, encryptedAllergies, encryptedConditions]
+      [name, normalizedEmail, password_hash, age, gender, weight || null, height || null, encryptedAllergies, encryptedConditions]
     );
 
     const patient = decryptFields(result.rows[0], ['allergies', 'chronic_conditions']);
     const tokens = generateTokenPair(patient);
 
-    // Initialize gamification record
-    await query(
-      `INSERT INTO gamification (patient_id, health_score, badges, total_checkups)
-       VALUES ($1, 50, '[]'::jsonb, 0)`,
-      [patient.id]
-    );
+    // Set refresh token as secure HttpOnly cookie
+    res.cookie('refreshToken', tokens.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/api/auth',
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    });
 
     // Audit log
     await createAuditLog({
@@ -58,7 +66,8 @@ const registerPatient = async (req, res, next) => {
     res.status(201).json({
       message: 'Registration successful',
       user: sanitizeUser(patient),
-      ...tokens
+      accessToken: tokens.accessToken,
+      expiresIn: tokens.expiresIn
     });
   } catch (error) {
     next(error);
@@ -66,63 +75,18 @@ const registerPatient = async (req, res, next) => {
 };
 
 /**
- * Register a new doctor
- * POST /api/auth/register/doctor
- */
-const registerDoctor = async (req, res, next) => {
-  try {
-    const { name, email, password, specialization, license_number } = req.body;
-
-    // Check if email already exists
-    const existing = await query('SELECT id FROM doctors WHERE email = $1', [email]);
-    if (existing.rows.length > 0) {
-      return res.status(409).json({ error: 'Email already registered' });
-    }
-
-    const password_hash = await bcrypt.hash(password, 12);
-
-    const result = await query(
-      `INSERT INTO doctors (name, email, password_hash, specialization, license_number, role)
-       VALUES ($1, $2, $3, $4, $5, 'doctor')
-       RETURNING id, name, email, specialization, license_number, role, created_at`,
-      [name, email, password_hash, specialization, license_number || null]
-    );
-
-    const doctor = result.rows[0];
-    const tokens = generateTokenPair(doctor);
-
-    await createAuditLog({
-      userId: doctor.id,
-      userRole: 'doctor',
-      action: 'REGISTER',
-      resource: 'doctor',
-      resourceId: doctor.id,
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent']
-    });
-
-    res.status(201).json({
-      message: 'Doctor registration successful',
-      user: sanitizeUser(doctor),
-      ...tokens
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Login (unified for patients and doctors)
+ * Login (unified for patients and verified doctors)
  * POST /api/auth/login
  */
 const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
+    const normalizedEmail = (email || '').toLowerCase().trim();
 
-    // Check patients table first
+    // Check patients table
     let result = await query(
-      'SELECT id, name, email, password_hash, role FROM patients WHERE email = $1 AND is_active = TRUE',
-      [email]
+      'SELECT id, name, email, password_hash, role, is_active FROM patients WHERE email = $1',
+      [normalizedEmail]
     );
 
     let userType = 'patient';
@@ -130,22 +94,37 @@ const login = async (req, res, next) => {
     // If not found in patients, check doctors
     if (result.rows.length === 0) {
       result = await query(
-        'SELECT id, name, email, password_hash, role FROM doctors WHERE email = $1 AND is_active = TRUE',
-        [email]
+        'SELECT id, name, email, password_hash, role, is_active, is_verified FROM doctors WHERE email = $1',
+        [normalizedEmail]
       );
       userType = 'doctor';
     }
 
+    // Timing attack mitigation: always run bcrypt.compare even if user not found (SEC10)
     if (result.rows.length === 0) {
+      await bcrypt.compare(password, DUMMY_HASH);
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     const user = result.rows[0];
 
+    // Check active status
+    if (user.is_active === false) {
+      return res.status(403).json({ error: 'Account is deactivated' });
+    }
+
     // Verify password
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
     if (!isValidPassword) {
       return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    // For doctors: verify clinical credential approval (SEC1)
+    if (user.role === 'doctor' && user.is_verified === false) {
+      return res.status(403).json({
+        error: 'Clinical account is pending administrative credential verification',
+        code: 'DOCTOR_UNVERIFIED'
+      });
     }
 
     const tokens = generateTokenPair(user);
@@ -161,12 +140,13 @@ const login = async (req, res, next) => {
       userAgent: req.headers['user-agent']
     });
 
-    // Set refresh token as httpOnly cookie
+    // Set refresh token as strict HttpOnly cookie (SEC3)
     res.cookie('refreshToken', tokens.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      sameSite: 'strict',
+      path: '/api/auth',
+      maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
     res.json({
@@ -195,22 +175,28 @@ const refreshToken = async (req, res, next) => {
     const decoded = verifyRefreshToken(token);
 
     // Fetch current user data
-    let result = await query('SELECT id, name, email, role FROM patients WHERE id = $1', [decoded.id]);
+    let result = await query('SELECT id, name, email, role, is_active FROM patients WHERE id = $1', [decoded.id]);
     if (result.rows.length === 0) {
-      result = await query('SELECT id, name, email, role FROM doctors WHERE id = $1', [decoded.id]);
+      result = await query('SELECT id, name, email, role, is_active, is_verified FROM doctors WHERE id = $1', [decoded.id]);
     }
 
-    if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'User not found' });
+    if (result.rows.length === 0 || result.rows[0].is_active === false) {
+      return res.status(401).json({ error: 'User account not found or deactivated' });
     }
 
     const user = result.rows[0];
+
+    if (user.role === 'doctor' && user.is_verified === false) {
+      return res.status(403).json({ error: 'Doctor account is not verified' });
+    }
+
     const tokens = generateTokenPair(user);
 
     res.cookie('refreshToken', tokens.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      sameSite: 'strict',
+      path: '/api/auth',
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
@@ -222,7 +208,7 @@ const refreshToken = async (req, res, next) => {
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({ error: 'Refresh token expired. Please log in again.' });
     }
-    next(error);
+    return res.status(401).json({ error: 'Invalid refresh token' });
   }
 };
 
@@ -247,7 +233,8 @@ const logout = async (req, res, next) => {
     res.clearCookie('refreshToken', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+      sameSite: 'strict',
+      path: '/api/auth'
     });
     res.json({ message: 'Logged out successfully' });
   } catch (error) {
@@ -256,7 +243,7 @@ const logout = async (req, res, next) => {
 };
 
 /**
- * Get current user profile
+ * Get current user profile (with decrypted sensitive fields) (SEC13)
  * GET /api/auth/me
  */
 const getProfile = async (req, res, next) => {
@@ -271,7 +258,7 @@ const getProfile = async (req, res, next) => {
       );
     } else {
       result = await query(
-        'SELECT id, name, email, specialization, license_number, role, created_at FROM doctors WHERE id = $1',
+        'SELECT id, name, email, specialization, license_number, role, is_verified, created_at FROM doctors WHERE id = $1',
         [id]
       );
     }
@@ -280,7 +267,14 @@ const getProfile = async (req, res, next) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    res.json({ user: result.rows[0] });
+    const userData = result.rows[0];
+
+    // Decrypt sensitive patient clinical fields before returning to authorized user (SEC13)
+    const sanitized = role === 'patient'
+      ? decryptFields(userData, ['allergies', 'chronic_conditions'])
+      : userData;
+
+    res.json({ user: sanitizeUser(sanitized) });
   } catch (error) {
     next(error);
   }
@@ -288,7 +282,6 @@ const getProfile = async (req, res, next) => {
 
 module.exports = {
   registerPatient,
-  registerDoctor,
   login,
   refreshToken,
   logout,

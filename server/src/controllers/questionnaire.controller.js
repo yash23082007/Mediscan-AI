@@ -13,7 +13,7 @@ const startQuestionnaire = async (req, res, next) => {
 
     // Get the root question node
     const rootResult = await query(
-      `SELECT id, question_text, category, question_type, options
+      `SELECT id, code, question_text, category, question_type, options
        FROM decision_tree_nodes
        WHERE is_root = TRUE AND is_active = TRUE
        ORDER BY display_order
@@ -21,20 +21,22 @@ const startQuestionnaire = async (req, res, next) => {
     );
 
     if (rootResult.rows.length === 0) {
-      return res.status(500).json({ error: 'No questionnaire available' });
+      return res.status(500).json({ error: 'No questionnaire available. Please contact support.' });
     }
 
-    // Create questionnaire response record
+    const rootNode = rootResult.rows[0];
+
+    // Create questionnaire response record, tracking current node
     const qrResult = await query(
-      `INSERT INTO questionnaire_responses (patient_id, responses, decision_path, completed)
-       VALUES ($1, '{}'::jsonb, '[]'::jsonb, FALSE)
+      `INSERT INTO questionnaire_responses (patient_id, current_node_code, responses, decision_path, completed)
+       VALUES ($1, $2, '{}'::jsonb, '[]'::jsonb, FALSE)
        RETURNING id`,
-      [patientId]
+      [patientId, rootNode.code]
     );
 
     res.json({
       sessionId: qrResult.rows[0].id,
-      question: rootResult.rows[0],
+      question: rootNode,
       totalEstimatedQuestions: 8
     });
   } catch (error) {
@@ -49,49 +51,91 @@ const startQuestionnaire = async (req, res, next) => {
 const getNextQuestion = async (req, res, next) => {
   try {
     const { sessionId, currentQuestionId, answer } = req.body;
+    const patientId = req.user.id;
 
-    // Save the current answer
+    // Validate session ownership (IDOR fix — SEC4)
+    const sessionCheck = await query(
+      `SELECT id, current_node_code, completed
+       FROM questionnaire_responses
+       WHERE id = $1 AND patient_id = $2`,
+      [sessionId, patientId]
+    );
+
+    if (sessionCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    const session = sessionCheck.rows[0];
+
+    if (session.completed) {
+      return res.status(400).json({ error: 'This questionnaire session is already completed' });
+    }
+
+    // Get current node — look up by code or id
+    let currentNode;
+    const byIdResult = await query(
+      'SELECT * FROM decision_tree_nodes WHERE id = $1 AND is_active = TRUE',
+      [currentQuestionId]
+    );
+    if (byIdResult.rows.length > 0) {
+      currentNode = byIdResult.rows[0];
+    } else {
+      // Try by code
+      const byCodeResult = await query(
+        'SELECT * FROM decision_tree_nodes WHERE code = $1 AND is_active = TRUE',
+        [currentQuestionId]
+      );
+      if (byCodeResult.rows.length > 0) {
+        currentNode = byCodeResult.rows[0];
+      }
+    }
+
+    if (!currentNode) {
+      return res.json({ completed: true, sessionId });
+    }
+
+    // Validate answer against allowed options (SEC4)
+    const validOptions = (currentNode.options || []).map(o => o.value);
+    if (currentNode.question_type === 'multiple_choice') {
+      const answers = Array.isArray(answer) ? answer : [answer];
+      const invalid = answers.filter(a => !validOptions.includes(a));
+      if (invalid.length > 0) {
+        return res.status(400).json({ error: `Invalid answer(s): ${invalid.join(', ')}` });
+      }
+    } else if (typeof answer === 'string' && !validOptions.includes(answer)) {
+      return res.status(400).json({ error: `Invalid answer: ${answer}. Valid options: ${validOptions.join(', ')}` });
+    }
+
+    // Save the current answer with ownership check
     await query(
       `UPDATE questionnaire_responses
        SET responses = responses || $1::jsonb,
            decision_path = decision_path || $2::jsonb
-       WHERE id = $3`,
+       WHERE id = $3 AND patient_id = $4`,
       [
-        JSON.stringify({ [currentQuestionId]: answer }),
-        JSON.stringify([currentQuestionId]),
-        sessionId
+        JSON.stringify({ [currentNode.code]: answer }),
+        JSON.stringify([currentNode.code]),
+        sessionId,
+        patientId
       ]
     );
 
-    // Get current node to determine next
-    const currentNode = await query(
-      'SELECT * FROM decision_tree_nodes WHERE id = $1',
-      [currentQuestionId]
-    );
-
-    if (currentNode.rows.length === 0) {
-      return res.json({ completed: true, sessionId });
-    }
-
-    const node = currentNode.rows[0];
-    const nextNodeLogic = node.next_node_logic || {};
-
-    // Determine next node ID
-    let nextNodeId = null;
+    // Determine next node using code-based next_node_logic
+    const nextNodeLogic = currentNode.next_node_logic || {};
+    let nextNodeCode = null;
 
     if (typeof answer === 'string' && nextNodeLogic[answer]) {
-      nextNodeId = nextNodeLogic[answer];
+      nextNodeCode = nextNodeLogic[answer];
     } else if (nextNodeLogic['*']) {
-      nextNodeId = nextNodeLogic['*'];
+      nextNodeCode = nextNodeLogic['*'];
     }
 
-    // If no next node, try AI engine for adaptive selection
-    if (!nextNodeId) {
+    // If no next node from static logic, try AI engine for adaptive selection
+    if (!nextNodeCode) {
       try {
-        // Get current responses
         const sessionResult = await query(
-          'SELECT responses FROM questionnaire_responses WHERE id = $1',
-          [sessionId]
+          'SELECT responses FROM questionnaire_responses WHERE id = $1 AND patient_id = $2',
+          [sessionId, patientId]
         );
         const currentResponses = sessionResult.rows[0]?.responses || {};
 
@@ -100,21 +144,23 @@ const getNextQuestion = async (req, res, next) => {
           answered_questions: Object.keys(currentResponses)
         }, { timeout: 10000 });
 
-        nextNodeId = aiResponse.data?.next_question_id;
+        nextNodeCode = aiResponse.data?.next_question_code;
       } catch (aiError) {
         console.error('AI next-question error:', aiError.message);
-        // Questionnaire is complete if AI can't determine next
       }
     }
 
     // If still no next node, questionnaire is complete
-    if (!nextNodeId) {
+    if (!nextNodeCode) {
       await query(
-        `UPDATE questionnaire_responses SET completed = TRUE, completed_at = NOW() WHERE id = $1`,
-        [sessionId]
+        `UPDATE questionnaire_responses
+         SET completed = TRUE, completed_at = NOW(),
+             total_questions = (SELECT jsonb_object_keys_count FROM (SELECT count(*) as jsonb_object_keys_count FROM jsonb_object_keys(responses)) sub)
+         WHERE id = $1 AND patient_id = $2`,
+        [sessionId, patientId]
       );
 
-      // Count total questions answered
+      // Get total questions count
       const sessionData = await query(
         'SELECT responses FROM questionnaire_responses WHERE id = $1',
         [sessionId]
@@ -122,26 +168,39 @@ const getNextQuestion = async (req, res, next) => {
       const totalQuestions = Object.keys(sessionData.rows[0]?.responses || {}).length;
 
       await query(
-        'UPDATE questionnaire_responses SET total_questions = $1 WHERE id = $2',
-        [totalQuestions, sessionId]
+        'UPDATE questionnaire_responses SET total_questions = $1 WHERE id = $2 AND patient_id = $3',
+        [totalQuestions, sessionId, patientId]
       );
 
       return res.json({ completed: true, sessionId, totalQuestions });
     }
 
-    // Fetch next question
+    // Update server-tracked current node
+    await query(
+      'UPDATE questionnaire_responses SET current_node_code = $1 WHERE id = $2 AND patient_id = $3',
+      [nextNodeCode, sessionId, patientId]
+    );
+
+    // Fetch next question by code
     const nextQuestion = await query(
-      `SELECT id, question_text, category, question_type, options
-       FROM decision_tree_nodes WHERE id = $1 AND is_active = TRUE`,
-      [nextNodeId]
+      `SELECT id, code, question_text, category, question_type, options
+       FROM decision_tree_nodes WHERE code = $1 AND is_active = TRUE`,
+      [nextNodeCode]
     );
 
     if (nextQuestion.rows.length === 0) {
-      await query(
-        'UPDATE questionnaire_responses SET completed = TRUE, completed_at = NOW() WHERE id = $1',
+      // Code referenced but question not found — complete the session
+      const sessionData = await query(
+        'SELECT responses FROM questionnaire_responses WHERE id = $1',
         [sessionId]
       );
-      return res.json({ completed: true, sessionId });
+      const totalQuestions = Object.keys(sessionData.rows[0]?.responses || {}).length;
+
+      await query(
+        'UPDATE questionnaire_responses SET completed = TRUE, completed_at = NOW(), total_questions = $1 WHERE id = $2 AND patient_id = $3',
+        [totalQuestions, sessionId, patientId]
+      );
+      return res.json({ completed: true, sessionId, totalQuestions });
     }
 
     // Estimate progress
@@ -150,7 +209,7 @@ const getNextQuestion = async (req, res, next) => {
       [sessionId]
     );
     const answeredCount = Object.keys(sessionData.rows[0]?.responses || {}).length;
-    const estimatedTotal = Math.max(answeredCount + 3, 8); // Rough estimate
+    const estimatedTotal = Math.max(answeredCount + 3, 8);
     const progress = Math.min(95, Math.round((answeredCount / estimatedTotal) * 100));
 
     res.json({
@@ -171,6 +230,13 @@ const getNextQuestion = async (req, res, next) => {
 const getSession = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(sessionId)) {
+      return res.status(400).json({ error: 'Invalid session ID format' });
+    }
+
     const result = await query(
       'SELECT * FROM questionnaire_responses WHERE id = $1 AND patient_id = $2',
       [sessionId, req.user.id]

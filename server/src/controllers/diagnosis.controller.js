@@ -3,6 +3,7 @@ const axios = require('axios');
 const { assessTriage } = require('../utils/triage');
 
 const AI_ENGINE_URL = process.env.AI_ENGINE_URL || 'http://localhost:5000';
+const AI_API_KEY = process.env.AI_API_KEY;
 
 /**
  * Request AI diagnosis
@@ -12,6 +13,25 @@ const createDiagnosis = async (req, res, next) => {
   try {
     const patientId = req.user.id;
     const { questionnaire_id } = req.body;
+
+    if (!questionnaire_id) {
+      return res.status(400).json({
+        error: 'Questionnaire ID is required for clinical assessment',
+        code: 'QUESTIONNAIRE_REQUIRED'
+      });
+    }
+
+    // Check if diagnosis already exists for this questionnaire session
+    const existingDiag = await query(
+      'SELECT * FROM diagnoses WHERE questionnaire_id = $1',
+      [questionnaire_id]
+    );
+    if (existingDiag.rows.length > 0) {
+      return res.status(200).json({
+        diagnosis: existingDiag.rows[0],
+        message: 'Returning existing diagnosis for this session'
+      });
+    }
 
     // Get patient info
     const patientResult = await query(
@@ -25,23 +45,40 @@ const createDiagnosis = async (req, res, next) => {
 
     const patient = patientResult.rows[0];
 
-    // Get questionnaire responses
-    let responses = {};
-    if (questionnaire_id) {
-      const qResult = await query(
-        'SELECT responses, decision_path FROM questionnaire_responses WHERE id = $1 AND patient_id = $2',
-        [questionnaire_id, patientId]
-      );
-      if (qResult.rows.length > 0) {
-        responses = qResult.rows[0].responses;
-      }
+    // Verify questionnaire completion and patient ownership (S7)
+    const qResult = await query(
+      'SELECT id, responses, decision_path, completed, completed_at FROM questionnaire_responses WHERE id = $1 AND patient_id = $2',
+      [questionnaire_id, patientId]
+    );
+
+    if (qResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Questionnaire session not found or does not belong to you',
+        code: 'QUESTIONNAIRE_NOT_FOUND'
+      });
     }
 
+    const questionnaire = qResult.rows[0];
+    if (!questionnaire.completed) {
+      return res.status(400).json({
+        error: 'Questionnaire must be completed before clinical analysis',
+        code: 'QUESTIONNAIRE_INCOMPLETE'
+      });
+    }
+
+    const responses = questionnaire.responses || {};
+
+    // 1. Deterministic red-flag safety triage before any ML runs (S4, S5)
     const triage = assessTriage(responses);
 
-    // Call AI Engine
+    // 2. Call AI Engine
     let aiResult;
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (AI_API_KEY) {
+        headers['X-API-Key'] = AI_API_KEY;
+      }
+
       const aiResponse = await axios.post(`${AI_ENGINE_URL}/predict`, {
         patient: {
           age: patient.age,
@@ -52,42 +89,79 @@ const createDiagnosis = async (req, res, next) => {
           chronic_conditions: patient.chronic_conditions
         },
         symptoms: responses
-      }, { timeout: 30000 });
+      }, {
+        headers,
+        timeout: 15000
+      });
 
       aiResult = aiResponse.data;
     } catch (aiError) {
-      console.error('AI Engine error:', aiError.message);
+      console.error('AI Engine error:', aiError.response?.data || aiError.message);
       return res.status(503).json({
-        error: 'The clinical analysis service is temporarily unavailable. Your responses were saved; please try again shortly.',
+        error: 'The clinical analysis service is temporarily unavailable. Your responses have been saved.',
         code: 'AI_ENGINE_UNAVAILABLE'
       });
     }
 
-    // Store diagnosis with rich clinical metadata from internet datasets
+    // 3. Handle model response (support ok, low_confidence, insufficient_evidence)
+    const conditions = aiResult.conditions || [];
+    const triageLevel = triage.urgency_level || 'routine';
+
     const contributionsPayload = {
       factors: aiResult.feature_contributions || {},
       clinical_overview: aiResult.clinical_overview || '',
       precautions: aiResult.precautions || [],
       triage,
-      dataset_info: aiResult.dataset_info || null
+      status: aiResult.status || 'ok',
+      missing_evidence_hints: aiResult.missing_evidence_hints || []
     };
 
     const diagnosisResult = await query(
-      `INSERT INTO diagnoses (patient_id, questionnaire_id, conditions, confidence_scores, explanation, feature_contributions)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING *`,
+      `INSERT INTO diagnoses (
+        patient_id,
+        questionnaire_id,
+        conditions,
+        ai_conditions,
+        confidence_scores,
+        probability_vector,
+        explanation,
+        feature_contributions,
+        triage_level,
+        triage_details,
+        model_version,
+        status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending')
+      RETURNING *`,
       [
         patientId,
-        questionnaire_id || null,
-        JSON.stringify(aiResult.conditions),
-        JSON.stringify(aiResult.conditions),
-        aiResult.explanation,
-        JSON.stringify(contributionsPayload)
+        questionnaire_id,
+        JSON.stringify(conditions),
+        JSON.stringify(conditions), // Immutable copy of original AI conditions
+        JSON.stringify(conditions),
+        JSON.stringify(aiResult.probability_vector || {}),
+        aiResult.explanation || '',
+        JSON.stringify(contributionsPayload),
+        triageLevel,
+        JSON.stringify(triage),
+        aiResult.model_version || 'v1.0.0'
       ]
     );
 
-    // Update gamification
-    await updateGamification(patientId);
+    // Audit log
+    await query(
+      `INSERT INTO audit_logs (user_id, user_role, action, resource, resource_id, details)
+       VALUES ($1, 'patient', 'CREATE_DIAGNOSIS', 'diagnoses', $2, $3)`,
+      [
+        patientId,
+        diagnosisResult.rows[0].id,
+        JSON.stringify({
+          questionnaire_id,
+          triage_level: triageLevel,
+          conditions_count: conditions.length,
+          model_status: aiResult.status
+        })
+      ]
+    );
 
     res.status(201).json({
       diagnosis: diagnosisResult.rows[0]
@@ -98,33 +172,25 @@ const createDiagnosis = async (req, res, next) => {
 };
 
 /**
- * Get internet dataset metrics and metadata
+ * Get verified model metadata and dataset sources
  * GET /api/diagnoses/datasets/info
  */
 const getDatasetsInfo = async (req, res, next) => {
   try {
-    const aiResponse = await axios.get(`${AI_ENGINE_URL}/datasets/info`, { timeout: 5000 });
+    const headers = {};
+    if (AI_API_KEY) headers['X-API-Key'] = AI_API_KEY;
+
+    const aiResponse = await axios.get(`${AI_ENGINE_URL}/datasets/info`, {
+      headers,
+      timeout: 5000
+    });
     res.json(aiResponse.data);
   } catch (error) {
+    // Rule: No fake fallback metrics! Return clean 503.
     res.status(503).json({
       status: 'unavailable',
-      error: 'Clinical dataset metadata is temporarily unavailable.',
-      code: 'AI_ENGINE_UNAVAILABLE',
-      metrics: {
-        accuracy: 0.9762,
-        validation_accuracy: 1.0,
-        num_samples: 4920,
-        num_features: 132,
-        num_classes: 41,
-        dataset_source: 'Kaggle / Columbia University Open Medical Disease-Symptom Repository'
-      },
-      datasets: [
-        { name: 'Disease Symptom Prediction Dataset', source: 'Kaggle / Columbia University', records: 4920, features: 132, target_classes: 41 },
-        { name: 'Disease Symptom Test Benchmark', source: 'Open Medical ML Benchmark', records: 42, features: 132, target_classes: 41 },
-        { name: 'Medical Condition Clinical Descriptions', source: 'Biomedical Knowledge Base', records: 41 },
-        { name: 'Clinical Precautions & Preventive Regimens', source: 'Healthcare Guideline Database', records: 41, precautions_per_disease: 4 },
-        { name: 'Symptom Clinical Severity Weight Matrix', source: 'Medical Triage & Urgency Database', records: 132, severity_scale: '1 to 7' }
-      ]
+      error: 'Model and dataset metadata service is temporarily unavailable.',
+      code: 'METADATA_UNAVAILABLE'
     });
   }
 };
@@ -191,53 +257,6 @@ const getLatestDiagnosis = async (req, res, next) => {
     res.json({ diagnosis: result.rows[0] });
   } catch (error) {
     next(error);
-  }
-};
-
-/**
- * Update gamification after diagnosis
- */
-const updateGamification = async (patientId) => {
-  try {
-    const gamResult = await query(
-      'SELECT * FROM gamification WHERE patient_id = $1',
-      [patientId]
-    );
-
-    if (gamResult.rows.length === 0) return;
-
-    const gam = gamResult.rows[0];
-    const newCheckups = gam.total_checkups + 1;
-    const newScore = Math.min(100, gam.health_score + 5);
-
-    // Award badges based on milestones
-    const badges = gam.badges || [];
-    const badgeNames = badges.map(b => b.name);
-
-    if (newCheckups >= 1 && !badgeNames.includes('Health Conscious')) {
-      badges.push({ name: 'Health Conscious', icon: '🏥', earned_at: new Date().toISOString(), description: 'Completed your first health checkup' });
-    }
-    if (newCheckups >= 3 && !badgeNames.includes('Early Detector')) {
-      badges.push({ name: 'Early Detector', icon: '🔍', earned_at: new Date().toISOString(), description: 'Completed 3 health checkups' });
-    }
-    if (newCheckups >= 5 && !badgeNames.includes('Wellness Warrior')) {
-      badges.push({ name: 'Wellness Warrior', icon: '🛡️', earned_at: new Date().toISOString(), description: 'Completed 5 health checkups' });
-    }
-    if (newCheckups >= 10 && !badgeNames.includes('Health Champion')) {
-      badges.push({ name: 'Health Champion', icon: '🏆', earned_at: new Date().toISOString(), description: 'Completed 10 health checkups' });
-    }
-    if (newScore >= 80 && !badgeNames.includes('Top Form')) {
-      badges.push({ name: 'Top Form', icon: '💪', earned_at: new Date().toISOString(), description: 'Achieved health score of 80+' });
-    }
-
-    await query(
-      `UPDATE gamification
-       SET health_score = $1, badges = $2, total_checkups = $3, last_checkup_at = NOW()
-       WHERE patient_id = $4`,
-      [newScore, JSON.stringify(badges), newCheckups, patientId]
-    );
-  } catch (error) {
-    console.error('Gamification update error:', error.message);
   }
 };
 

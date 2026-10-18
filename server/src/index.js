@@ -21,6 +21,9 @@ const { AppError, errorHandler } = require('./utils/errors');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Trust reverse proxy for accurate IP identification on Render / Vercel (SEC9)
+app.set('trust proxy', 1);
+
 app.use((req, res, next) => {
   const requestId = req.get('x-request-id') || randomUUID();
   req.requestId = requestId;
@@ -31,42 +34,72 @@ app.use((req, res, next) => {
 // ============================================
 // SECURITY MIDDLEWARE
 // ============================================
-app.use(helmet());
-const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
-const allowedOrigins = corsOrigin.includes(',')
-  ? corsOrigin.split(',').map(s => s.trim())
-  : [corsOrigin];
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      connectSrc: ["'self'"]
+    }
+  }
+}));
+
+// CORS Configuration — strict allowlist, NO wildcards (SEC2)
+const configuredOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
 
 app.use(cors({
   origin: (origin, callback) => {
+    // Allow non-browser requests (e.g. mobile apps, curl, server-to-server)
     if (!origin) return callback(null, true);
-    if (corsOrigin === '*' || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+
+    if (configuredOrigins.includes(origin)) {
       return callback(null, true);
     }
-    return callback(new AppError('Origin not allowed by CORS policy', 403));
+    // Development convenience for localhost
+    if (process.env.NODE_ENV !== 'production' && /^http:\/\/localhost:\d+$/.test(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new AppError('CORS origin denied by security policy', 403));
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-request-id', 'X-API-Key']
 }));
 
-// Rate limiting
-const limiter = rateLimit({
+// General API rate limiter (SEC9)
+const apiLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
   max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
-  message: { error: 'Too many requests, please try again later.' },
+  message: { error: 'Too many requests from this IP, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false
 });
-app.use('/api/', limiter);
+app.use('/api/', apiLimiter);
+
+// Specific Auth login rate limiter — 5 attempts per 15 minutes per IP (SEC9)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many login attempts. Please try again after 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+app.use('/api/auth/login', loginLimiter);
 
 // ============================================
 // BODY PARSING & LOGGING
 // ============================================
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+// Reduced from 10mb to 100kb to mitigate payload DoS (SEC16)
+app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 app.use(cookieParser());
-app.use(morgan('combined'));
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 // ============================================
 // HEALTH CHECK
@@ -75,17 +108,20 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    service: 'medical-diagnosis-api',
+    service: 'mediscan-api',
     version: '1.0.0'
   });
 });
 
 app.get('/api/health/ready', async (req, res) => {
   const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:5000';
+  const apiKey = process.env.AI_API_KEY;
   let aiEngine = 'unavailable';
 
   try {
-    const aiResponse = await axios.get(`${aiEngineUrl}/health`, { timeout: 3000 });
+    const headers = {};
+    if (apiKey) headers['X-API-Key'] = apiKey;
+    const aiResponse = await axios.get(`${aiEngineUrl}/health`, { headers, timeout: 3000 });
     if (aiResponse.status === 200 && aiResponse.data?.status === 'healthy') {
       aiEngine = 'healthy';
     }
@@ -97,8 +133,11 @@ app.get('/api/health/ready', async (req, res) => {
   res.status(ready ? 200 : 503).json({
     status: ready ? 'ready' : 'not_ready',
     timestamp: new Date().toISOString(),
-    service: 'medical-diagnosis-api',
-    dependencies: { aiEngine }
+    service: 'mediscan-api',
+    checks: {
+      database: 'healthy',
+      ai_engine: aiEngine
+    }
   });
 });
 
@@ -112,22 +151,18 @@ app.use('/api/diagnoses', diagnosisRoutes);
 app.use('/api/questionnaire', questionnaireRoutes);
 app.use('/api/feedback', feedbackRoutes);
 
-// ============================================
-// ERROR HANDLING
-// ============================================
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+// 404 Handler
+app.use('*', (req, res, next) => {
+  next(new AppError(`Endpoint not found: ${req.method} ${req.originalUrl}`, 404));
 });
 
+// Central Error Handler
 app.use(errorHandler);
 
-// ============================================
-// START SERVER
-// ============================================
-app.listen(PORT, () => {
-  console.log(`🏥 Medical Diagnosis API running on port ${PORT}`);
-  console.log(`📋 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
-});
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`[INFO] MediscanAI API running on port ${PORT} (${process.env.NODE_ENV || 'development'})`);
+  });
+}
 
 module.exports = app;

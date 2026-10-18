@@ -1,22 +1,48 @@
 const crypto = require('crypto');
 
 const ALGORITHM = 'aes-256-gcm';
-const IV_LENGTH = 16;
-const TAG_LENGTH = 16;
+const IV_LENGTH = 12; // NIST standard for AES-GCM is 96 bits (12 bytes)
+const isProduction = process.env.NODE_ENV === 'production';
 
-// Encryption key must be 32 bytes (64 hex chars)
+// Parse 32-byte encryption key from hex, base64, or utf-8
 const getEncryptionKey = () => {
-  const key = process.env.ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
-  if (!key || key.length !== 64) {
-    throw new Error('ENCRYPTION_KEY must be a 64-character hex string (32 bytes)');
+  const rawKey = process.env.ENCRYPTION_KEY;
+
+  if (isProduction && (!rawKey || rawKey.includes('0123456789abcdef'))) {
+    throw new Error('FATAL: Insecure or default ENCRYPTION_KEY detected in production (SEC5/SEC14)');
   }
-  return Buffer.from(key, 'hex');
+
+  const keyStr = rawKey || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
+  // Try 64-char hex
+  if (/^[0-9a-fA-F]{64}$/.test(keyStr)) {
+    return Buffer.from(keyStr, 'hex');
+  }
+
+  // Try base64 (e.g. from openssl rand -base64 32)
+  try {
+    const buf = Buffer.from(keyStr, 'base64');
+    if (buf.length === 32) {
+      return buf;
+    }
+  } catch (e) {
+    // continue
+  }
+
+  // Try direct 32-byte string
+  if (Buffer.byteLength(keyStr, 'utf8') === 32) {
+    return Buffer.from(keyStr, 'utf8');
+  }
+
+  throw new Error('ENCRYPTION_KEY must be a valid 32-byte key (64 hex characters or 32-byte base64 string)');
 };
 
 /**
  * Encrypt a plaintext string using AES-256-GCM
+ * Format: v1:iv:encrypted:tag (hex encoded)
+ *
  * @param {string} plaintext - The text to encrypt
- * @returns {string} Encrypted string in format: iv:encrypted:tag (all hex-encoded)
+ * @returns {string} Encrypted string
  */
 const encrypt = (plaintext) => {
   if (!plaintext) return plaintext;
@@ -30,29 +56,38 @@ const encrypt = (plaintext) => {
 
   const tag = cipher.getAuthTag();
 
-  // Format: iv:encrypted:tag (all hex)
-  return `${iv.toString('hex')}:${encrypted}:${tag.toString('hex')}`;
+  return `v1:${iv.toString('hex')}:${encrypted}:${tag.toString('hex')}`;
 };
 
 /**
  * Decrypt an AES-256-GCM encrypted string
- * @param {string} encryptedText - The encrypted text in format: iv:encrypted:tag
+ * Supports both v1 (12-byte IV) and legacy (16-byte IV) formats.
+ *
+ * @param {string} encryptedText - The encrypted text
  * @returns {string} Decrypted plaintext
  */
 const decrypt = (encryptedText) => {
   if (!encryptedText) return encryptedText;
 
+  const key = getEncryptionKey();
+  let ivHex, encrypted, tagHex;
+
+  const parts = encryptedText.split(':');
+
+  if (parts.length === 4 && parts[0] === 'v1') {
+    // Format: v1:iv:ct:tag
+    [, ivHex, encrypted, tagHex] = parts;
+  } else if (parts.length === 3) {
+    // Legacy format: iv:ct:tag
+    [ivHex, encrypted, tagHex] = parts;
+  } else {
+    // Not encrypted or unrecognized format
+    return encryptedText;
+  }
+
   try {
-    const key = getEncryptionKey();
-    const parts = encryptedText.split(':');
-
-    if (parts.length !== 3) {
-      throw new Error('Invalid encrypted text format');
-    }
-
-    const iv = Buffer.from(parts[0], 'hex');
-    const encrypted = parts[1];
-    const tag = Buffer.from(parts[2], 'hex');
+    const iv = Buffer.from(ivHex, 'hex');
+    const tag = Buffer.from(tagHex, 'hex');
 
     const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
     decipher.setAuthTag(tag);
@@ -62,18 +97,16 @@ const decrypt = (encryptedText) => {
 
     return decrypted;
   } catch (error) {
-    console.error('Decryption error:', error.message);
-    return '[ENCRYPTED]';
+    console.error('Decryption failed for ciphertext:', error.message);
+    throw new Error('Failed to decrypt sensitive clinical record (SEC14)');
   }
 };
 
 /**
  * Encrypt specific fields in an object
- * @param {object} data - The data object
- * @param {string[]} fields - Array of field names to encrypt
- * @returns {object} Object with specified fields encrypted
  */
 const encryptFields = (data, fields) => {
+  if (!data) return data;
   const result = { ...data };
   for (const field of fields) {
     if (result[field]) {
@@ -85,11 +118,9 @@ const encryptFields = (data, fields) => {
 
 /**
  * Decrypt specific fields in an object
- * @param {object} data - The data object
- * @param {string[]} fields - Array of field names to decrypt
- * @returns {object} Object with specified fields decrypted
  */
 const decryptFields = (data, fields) => {
+  if (!data) return data;
   const result = { ...data };
   for (const field of fields) {
     if (result[field]) {
@@ -99,4 +130,10 @@ const decryptFields = (data, fields) => {
   return result;
 };
 
-module.exports = { encrypt, decrypt, encryptFields, decryptFields };
+module.exports = {
+  encrypt,
+  decrypt,
+  encryptFields,
+  decryptFields,
+  getEncryptionKey
+};

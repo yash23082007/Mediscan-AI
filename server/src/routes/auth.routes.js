@@ -1,11 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate, optionalAuth } = require('../middleware/auth');
-const { validate, registerPatientSchema, registerDoctorSchema, loginSchema } = require('../middleware/validate');
+const { validate, registerPatientSchema, loginSchema } = require('../middleware/validate');
 const { auditLog } = require('../middleware/audit');
 const {
   registerPatient,
-  registerDoctor,
   login,
   refreshToken,
   logout,
@@ -14,7 +13,7 @@ const {
 
 // Public routes
 router.post('/register/patient', validate(registerPatientSchema), registerPatient);
-router.post('/register/doctor', validate(registerDoctorSchema), registerDoctor);
+// Note: SEC1 — Public doctor registration route is removed. Doctor accounts are seeded or created via invite.
 router.post('/login', validate(loginSchema), login);
 router.post('/refresh', refreshToken);
 
