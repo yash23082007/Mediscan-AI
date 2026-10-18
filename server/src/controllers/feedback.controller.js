@@ -1,5 +1,6 @@
 const { query, withTransaction } = require('../config/database');
 const { createAuditLog } = require('../middleware/audit');
+const { broadcastCaseEvent } = require('../realtime');
 
 // 41 recognized model conditions for validation (C4)
 const RECOGNIZED_CONDITIONS = new Set([
@@ -126,6 +127,15 @@ const submitFeedback = async (req, res, next) => {
       details: { feedbackId: result.id, action },
       ipAddress: req.ip,
       userAgent: req.headers['user-agent']
+    });
+
+    // 6. Broadcast live SSE update to patient and triage queue (§6.1, §6.2)
+    broadcastCaseEvent({
+      type: 'case_reviewed',
+      case_id: diagnosis_id,
+      status: action === 'approve' ? 'approved' : action === 'override' ? 'overridden' : 'corrected',
+      reviewer_id: doctorId,
+      reviewed_at: new Date().toISOString()
     });
 
     res.status(201).json({

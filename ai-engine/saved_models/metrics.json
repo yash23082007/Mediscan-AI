@@ -1,1 +1,9 @@
-{"accuracy": 0.9761904761904762, "validation_accuracy": 1.0, "num_samples": 4920, "num_features": 132, "num_classes": 41, "dataset_source": "Kaggle / Columbia University Open Medical Disease-Symptom Repository"}
+{
+  "train_accuracy": 1.0,
+  "num_samples": 4920,
+  "unique_profiles": 304,
+  "num_features": 132,
+  "num_classes": 41,
+  "calibration": "isotonic",
+  "model_type": "CalibratedClassifierCV(RandomForestClassifier)"
+}

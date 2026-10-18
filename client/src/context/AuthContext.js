@@ -1,27 +1,84 @@
-/* eslint-disable */
 'use client'
 
-import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 
 const AuthContext = createContext(null)
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
 
 export function AuthProvider({ children }) {
+  // Access token kept in memory only (SEC7)
   const [user, setUser] = useState(null)
   const [token, setToken] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    // Check for stored token on mount
-    const storedToken = localStorage.getItem('accessToken')
-    const storedUser = localStorage.getItem('user')
-    if (storedToken && storedUser) {
-      setToken(storedToken)
-      setUser(JSON.parse(storedUser))
+  const tokenRef = useRef(token)
+  tokenRef.current = token
+
+  const refreshPromiseRef = useRef(null)
+
+  // Single-flight token refresh using HttpOnly cookie (UI1, SEC3)
+  const refreshAuthToken = useCallback(async () => {
+    if (refreshPromiseRef.current) {
+      return refreshPromiseRef.current
     }
-    setLoading(false)
+
+    refreshPromiseRef.current = (async () => {
+      try {
+        const res = await fetch(`${API_URL}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include'
+        })
+
+        if (!res.ok) {
+          setToken(null)
+          setUser(null)
+          return null
+        }
+
+        const data = await res.json()
+        setToken(data.accessToken)
+        return data.accessToken
+      } catch (e) {
+        setToken(null)
+        setUser(null)
+        return null
+      } finally {
+        refreshPromiseRef.current = null
+      }
+    })()
+
+    return refreshPromiseRef.current
   }, [])
+
+  // Check session on mount via HttpOnly cookie refresh
+  useEffect(() => {
+    let isMounted = true
+
+    async function initSession() {
+      try {
+        const newToken = await refreshAuthToken()
+        if (newToken && isMounted) {
+          const profileRes = await fetch(`${API_URL}/auth/me`, {
+            headers: { Authorization: `Bearer ${newToken}` },
+            credentials: 'include'
+          })
+          if (profileRes.ok) {
+            const profileData = await profileRes.json()
+            if (isMounted) setUser(profileData.user)
+          }
+        }
+      } catch (err) {
+        console.warn('Initial session check failed:', err)
+      } finally {
+        if (isMounted) setLoading(false)
+      }
+    }
+
+    initSession()
+    return () => { isMounted = false }
+  }, [refreshAuthToken])
 
   const login = async (email, password) => {
     const res = await fetch(`${API_URL}/auth/login`, {
@@ -32,11 +89,9 @@ export function AuthProvider({ children }) {
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || 'Login failed')
-    
+
     setToken(data.accessToken)
     setUser(data.user)
-    localStorage.setItem('accessToken', data.accessToken)
-    localStorage.setItem('user', JSON.stringify(data.user))
     return data
   }
 
@@ -44,47 +99,77 @@ export function AuthProvider({ children }) {
     const res = await fetch(`${API_URL}/auth/register/patient`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(formData)
+      body: JSON.stringify(formData),
+      credentials: 'include'
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || data.details?.[0]?.message || 'Registration failed')
 
     setToken(data.accessToken)
     setUser(data.user)
-    localStorage.setItem('accessToken', data.accessToken)
-    localStorage.setItem('user', JSON.stringify(data.user))
     return data
   }
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    const currentToken = tokenRef.current
     setToken(null)
     setUser(null)
-    localStorage.removeItem('accessToken')
-    localStorage.removeItem('user')
-    // Also call the server
-    fetch(`${API_URL}/auth/logout`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      credentials: 'include'
-    }).catch(() => {})
+
+    try {
+      await fetch(`${API_URL}/auth/logout`, {
+        method: 'POST',
+        headers: currentToken ? { Authorization: `Bearer ${currentToken}` } : {},
+        credentials: 'include'
+      })
+    } catch (e) {
+      // Ignore network errors on logout
+    }
   }, [])
 
+  // Authenticated fetch with single-flight automatic refresh interceptor (UI1)
   const authFetch = useCallback(async (url, options = {}) => {
-    const res = await fetch(`${API_URL}${url}`, {
+    let activeToken = tokenRef.current
+
+    // If no token in memory, try refreshing first
+    if (!activeToken) {
+      activeToken = await refreshAuthToken()
+    }
+
+    // Normalize path to prevent duplicate /api/api
+    const normalizedPath = url.startsWith('/api/') ? url.slice(4) : url.startsWith('/api') ? url.slice(4) : url
+    const requestUrl = `${API_URL}${normalizedPath.startsWith('/') ? normalizedPath : '/' + normalizedPath}`
+
+    let res = await fetch(requestUrl, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
         ...options.headers,
       },
       credentials: 'include'
     })
+
+    // If 401, attempt one token refresh and retry
     if (res.status === 401) {
-      logout()
-      throw new Error('Session expired')
+      const refreshedToken = await refreshAuthToken()
+      if (refreshedToken) {
+        res = await fetch(requestUrl, {
+          ...options,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${refreshedToken}`,
+            ...options.headers,
+          },
+          credentials: 'include'
+        })
+      } else {
+        await logout()
+        throw new Error('Session expired. Please log in again.')
+      }
     }
+
     return res
-  }, [logout, token])
+  }, [refreshAuthToken, logout])
 
   return (
     <AuthContext.Provider value={{ user, token, loading, login, registerPatient, logout, authFetch }}>

@@ -1,10 +1,12 @@
 """
 MediscanAI Clinical AI Engine
-REST API for calibrated symptom classification and explainability.
+REST API for calibrated symptom classification, TreeSHAP explainability,
+and Expected Information Gain (EIG) adaptive questioning.
 """
 
 import os
 import hmac
+import numpy as np
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -14,6 +16,7 @@ load_dotenv()
 from config import Config
 from models.classifier import MedicalClassifier
 from models.explainer import DiagnosisExplainer
+from models.eig import EIGSelector
 
 app = Flask(__name__)
 
@@ -28,6 +31,7 @@ CORS(app, origins=[
 # Initialize AI components
 classifier = MedicalClassifier()
 explainer = DiagnosisExplainer()
+eig_selector = EIGSelector(classifier)
 
 AI_API_KEY = os.getenv('AI_API_KEY')
 
@@ -111,12 +115,99 @@ def predict():
         })
 
     except Exception as e:
-        # SEC12: Avoid leaking raw exception internals
         print(f"[ERROR] Prediction failure: {e}", flush=True)
         return jsonify({
             'error': 'Clinical inference encountered an unexpected processing error',
             'code': 'INFERENCE_ERROR'
         }), 500
+
+# ============================================
+# COUNTERFACTUAL WHAT-IF ENDPOINT (§5.5)
+# ============================================
+@app.route('/predict/what-if', methods=['POST'])
+def what_if():
+    """
+    Counterfactual reasoning: toggle a symptom and return the shifted probability vector.
+    """
+    if not verify_api_key():
+        return jsonify({'error': 'Unauthorized service access'}), 401
+
+    try:
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({'error': 'Invalid JSON body'}), 400
+
+        patient = data.get('patient', {})
+        base_symptoms = dict(data.get('symptoms', {}))
+        toggle_symptom = data.get('toggle_symptom')
+        toggle_state = data.get('toggle_state', True)
+
+        if not toggle_symptom:
+            return jsonify({'error': 'toggle_symptom is required'}), 400
+
+        # Baseline prediction
+        base_result = classifier.predict(patient, base_symptoms)
+
+        # Counterfactual modified symptoms
+        modified_symptoms = dict(base_symptoms)
+        if toggle_state:
+            modified_symptoms[toggle_symptom] = 1
+        else:
+            modified_symptoms.pop(toggle_symptom, None)
+
+        cf_result = classifier.predict(patient, modified_symptoms)
+
+        return jsonify({
+            'toggle_symptom': toggle_symptom,
+            'toggle_state': toggle_state,
+            'baseline': base_result.get('conditions', []),
+            'counterfactual': cf_result.get('conditions', []),
+            'baseline_status': base_result.get('status'),
+            'counterfactual_status': cf_result.get('status')
+        })
+
+    except Exception as e:
+        print(f"[ERROR] What-if computation failure: {e}", flush=True)
+        return jsonify({'error': 'Counterfactual analysis failed'}), 500
+
+# ============================================
+# ADAPTIVE QUESTION SELECTION VIA EIG (§5.4)
+# ============================================
+@app.route('/next-question', methods=['POST'])
+def next_question():
+    """
+    Select the single most informative next question using Expected Information Gain (EIG).
+    """
+    if not verify_api_key():
+        return jsonify({'error': 'Unauthorized service access'}), 401
+
+    try:
+        data = request.get_json(silent=True) or {}
+        current_responses = data.get('current_responses', {})
+        asked_features = data.get('asked_features', [])
+
+        vector, positive_syms = classifier._symptoms_to_features({}, current_responses)
+        eig_result = eig_selector.select_next_question(vector, asked_features)
+
+        if not eig_result or eig_result.get('should_stop'):
+            return jsonify({
+                'completed': True,
+                'current_entropy': eig_result.get('current_entropy', 0.0) if eig_result else 0.0,
+                'message': 'Sufficient clinical evidence gathered to conclude adaptive inquiry.'
+            })
+
+        return jsonify({
+            'completed': False,
+            'next_feature': eig_result['next_feature'],
+            'information_gain': eig_result['information_gain'],
+            'current_entropy': eig_result['current_entropy'],
+            'rationale': eig_result['rationale'],
+            'contending_conditions': eig_result.get('contending_conditions', [])
+        })
+
+    except Exception as e:
+        print(f"[ERROR] Next question EIG error: {e}", flush=True)
+        return jsonify({'error': 'Adaptive inquiry service error'}), 500
 
 # ============================================
 # DATASETS INFO ENDPOINT
@@ -125,7 +216,6 @@ def predict():
 def datasets_info():
     """
     Return authentic metadata about the clinical symptom training dataset (F9, F10).
-    Traceable to public Kaggle / UCI repositories.
     """
     return jsonify({
         'status': 'active',
@@ -163,8 +253,27 @@ def datasets_info():
                 'scale': '1 to 7',
                 'type': 'Relative symptom severity weights'
             }
-        ]
-    })
+# ============================================
+# VERNACULAR SYMPTOM EXTRACTION (NLU §5.6)
+# ============================================
+@app.route('/extract-symptoms', methods=['POST'])
+def extract_symptoms():
+    """
+    Extract candidate symptom confirmation chips from free-text (English, Hindi, Hinglish).
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        text = data.get('text', '')
+        from models.nlu import extract_symptoms_from_text
+        chips = extract_symptoms_from_text(text)
+        return jsonify({
+            'text': text,
+            'symptoms': chips,
+            'count': len(chips)
+        })
+    except Exception as e:
+        print(f"[ERROR] NLU symptom extraction failed: {e}", flush=True)
+        return jsonify({'error': 'Symptom parsing failed'}), 500
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))

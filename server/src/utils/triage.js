@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 /**
  * MediscanAI Clinical Triage Engine
  * Two-stage triage:

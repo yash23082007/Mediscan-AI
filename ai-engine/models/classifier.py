@@ -93,19 +93,19 @@ class MedicalClassifier:
 
         # Base Random Forest
         base_rf = RandomForestClassifier(
-            n_estimators=100,
-            max_depth=25,
+            n_estimators=80,
+            max_depth=20,
             min_samples_split=2,
             min_samples_leaf=1,
             random_state=42,
-            n_jobs=-1,
+            n_jobs=1,
             class_weight='balanced'
         )
 
         # Calibrate probabilities using isotonic regression (S2)
         print("[INFO] Fitting CalibratedClassifierCV with isotonic calibration...", flush=True)
         cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
-        self.model = CalibratedClassifierCV(estimator=base_rf, method='isotonic', cv=cv)
+        self.model = CalibratedClassifierCV(estimator=base_rf, method='isotonic', cv=cv, n_jobs=1)
         self.model.fit(X.values, y_encoded)
 
         # Evaluate honest baseline metrics

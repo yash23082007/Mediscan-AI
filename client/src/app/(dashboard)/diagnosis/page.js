@@ -1,4 +1,3 @@
-/* eslint-disable */
 'use client'
 
 import { useState, useEffect, Suspense } from 'react'
@@ -131,7 +130,7 @@ function DiagnosisContent() {
               Symptom Evaluation Summary
             </h1>
             <p className="text-caption mt-1">
-              Assessment ID: <span className="text-tabular">{diagnosis.id?.slice(0, 8) || 'Current'}</span> &bull; Recorded on{' '}
+              Assessment ID: <span className="text-tabular">{diagnosis.id?.slice(0, 8) || 'Current'}</span> • Recorded on{' '}
               <span className="text-tabular">
                 {new Date(diagnosis.created_at || Date.now()).toLocaleDateString('en-US', {
                   month: 'long',

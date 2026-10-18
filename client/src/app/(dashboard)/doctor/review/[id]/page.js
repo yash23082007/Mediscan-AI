@@ -123,7 +123,7 @@ export default function ReviewPage() {
         <div>
           <div className="eyebrow-clinical" style={{ fontSize: '0.6875rem' }}>Clinical Evaluation</div>
           <h1 className="editorial-heading-lg" style={{ fontSize: '1.625rem' }}>
-            Patient Dossier &bull; {submission.patient_name}
+            Patient Dossier • {submission.patient_name}
           </h1>
         </div>
       </div>
@@ -144,7 +144,7 @@ export default function ReviewPage() {
           <div className="clinical-panel-subtle" style={{ padding: '0.75rem 1rem' }}>
             <span className="text-caption">Demographics</span>
             <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginTop: '0.125rem' }}>
-              {submission.patient_age ? `${submission.patient_age} yrs` : '—'} &bull; {submission.patient_gender || '—'}
+              {submission.patient_age ? `${submission.patient_age} yrs` : '—'} • {submission.patient_gender || '—'}
             </div>
           </div>
           <div className="clinical-panel-subtle" style={{ padding: '0.75rem 1rem' }}>

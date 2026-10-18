@@ -4,28 +4,22 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12; // NIST standard for AES-GCM is 96 bits (12 bytes)
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Parse 32-byte encryption key from hex, base64, or utf-8
+// Parse 32-byte encryption key from hex, base64, or utf-8 (SEC14)
 const getEncryptionKey = () => {
-<<<<<<< HEAD
   const rawKey = process.env.ENCRYPTION_KEY;
 
   if (isProduction && (!rawKey || rawKey.includes('0123456789abcdef'))) {
     throw new Error('FATAL: Insecure or default ENCRYPTION_KEY detected in production (SEC5/SEC14)');
-=======
-  const key = process.env.ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
-  if (!key || key.length !== 64) {
-    throw new Error('ENCRYPTION_KEY must be a 64-character hex string (32 bytes)');
->>>>>>> 6c758f0b735380f9091b3328fb200d10ff5cef85
   }
 
   const keyStr = rawKey || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
-  // Try 64-char hex
+  // 1. 64-char hex
   if (/^[0-9a-fA-F]{64}$/.test(keyStr)) {
     return Buffer.from(keyStr, 'hex');
   }
 
-  // Try base64 (e.g. from openssl rand -base64 32)
+  // 2. Base64 (e.g. from Render or openssl rand -base64 32)
   try {
     const buf = Buffer.from(keyStr, 'base64');
     if (buf.length === 32) {
@@ -35,7 +29,7 @@ const getEncryptionKey = () => {
     // continue
   }
 
-  // Try direct 32-byte string
+  // 3. Raw 32 bytes
   if (Buffer.byteLength(keyStr, 'utf8') === 32) {
     return Buffer.from(keyStr, 'utf8');
   }
@@ -46,9 +40,6 @@ const getEncryptionKey = () => {
 /**
  * Encrypt a plaintext string using AES-256-GCM
  * Format: v1:iv:encrypted:tag (hex encoded)
- *
- * @param {string} plaintext - The text to encrypt
- * @returns {string} Encrypted string
  */
 const encrypt = (plaintext) => {
   if (!plaintext) return plaintext;
@@ -68,9 +59,6 @@ const encrypt = (plaintext) => {
 /**
  * Decrypt an AES-256-GCM encrypted string
  * Supports both v1 (12-byte IV) and legacy (16-byte IV) formats.
- *
- * @param {string} encryptedText - The encrypted text
- * @returns {string} Decrypted plaintext
  */
 const decrypt = (encryptedText) => {
   if (!encryptedText) return encryptedText;
@@ -81,13 +69,10 @@ const decrypt = (encryptedText) => {
   const parts = encryptedText.split(':');
 
   if (parts.length === 4 && parts[0] === 'v1') {
-    // Format: v1:iv:ct:tag
     [, ivHex, encrypted, tagHex] = parts;
   } else if (parts.length === 3) {
-    // Legacy format: iv:ct:tag
     [ivHex, encrypted, tagHex] = parts;
   } else {
-    // Not encrypted or unrecognized format
     return encryptedText;
   }
 
