@@ -1,349 +1,530 @@
 # MediscanAI
 
-Clinical decision support system and diagnostic triage platform built with Next.js, Express, and a Python Random Forest classification service.
+## Explainable AI Clinical Decision Support and Disease Detection System
+
+**MediscanAI** is a full-stack healthcare triage prototype that turns patient-reported symptoms into an adaptive assessment, an explainable top-three differential prediction, and a physician-reviewable case. It is designed for academic demonstration, hackathon evaluation, and research—not for autonomous diagnosis or treatment.
+
+> **Safety boundary:** MediscanAI is not a medical device, doctor, emergency service, or substitute for professional medical care. Its model output is decision support only. Anyone with urgent or severe symptoms should contact local emergency services or a qualified healthcare professional immediately.
 
 ---
 
-## Medical Disclaimer
+## 1. Submission Snapshot
 
-MediscanAI is an experimental decision-support tool designed for preliminary triage, research, and technical demonstration. It does not provide medical diagnoses, clinical treatment plans, or emergency services. Consult a qualified healthcare professional for medical concerns. In an emergency, contact local emergency services immediately.
+| Field | Details |
+| --- | --- |
+| Team | Yash Vijay (Solo) |
+| College / Incubator | JECRC Foundation, Jaipur |
+| Project title | MediscanAI: Explainable AI Clinical Decision Support and Disease Detection System |
+| Category | Healthcare AI, full-stack web application, clinical workflow |
+| Current status | Working academic prototype with local Docker, test, deployment, and QA evidence paths |
+| Primary value | Explainable triage plus a physician-in-the-loop review loop |
+
+### Why this project is different
+
+Most symptom checkers stop after producing a label. MediscanAI closes the loop:
+
+1. **Adapt:** ask the next relevant question instead of presenting one exhausting checklist.
+2. **Explain:** show the top three model candidates and symptom-level contribution information.
+3. **Escalate responsibly:** surface safety guidance and clearly communicate uncertainty.
+4. **Review:** place the case in a clinician queue for approval, correction, or override.
+5. **Account:** persist review status and audit events for traceability.
+
+The central design principle is simple:
+
+> **AI should make the next human decision better informed—not replace the human decision.**
 
 ---
 
-## Overview
+## 2. Problem Statement
 
-MediscanAI connects symptom intake questionnaires to a machine learning classifier and a doctor review workflow:
+Patients often do not know whether symptoms require self-monitoring, routine care, prompt clinical review, or urgent attention. Existing digital symptom experiences commonly have three weaknesses:
 
-1. **Questionnaire**: An adaptive questionnaire guides patients through symptom assessment based on decision-tree routing.
-2. **Classification**: Patient responses are evaluated by a Random Forest model trained on a standard clinical dataset (4,920 records across 132 symptoms and 41 disease classes).
-3. **Differential Diagnosis & Feature Attribution**: The model returns the top 3 candidate conditions with confidence scores and symptom contribution weights.
-4. **Physician Review**: Submissions enter a doctor review queue where clinical staff can review predictions, record notes, and approve or override classifications.
-5. **Security**: Field-level AES-256-GCM encryption for patient data, JWT authentication with role-based access control (`patient`, `doctor`, `admin`), and append-only database audit logs.
+- long static questionnaires create fatigue and incomplete answers;
+- black-box predictions provide little evidence for a patient or clinician to inspect; and
+- a prediction is often disconnected from a reviewable healthcare workflow.
+
+MediscanAI addresses these weaknesses with an adaptive questionnaire, a model explanation layer, explicit safety boundaries, and a doctor review portal.
 
 ---
 
-## Architecture
+## 3. Healthcare Use Case
+
+### Patient journey
+
+1. A patient registers or logs in.
+2. The patient starts an authenticated questionnaire.
+3. The adaptive flow selects the next relevant question based on current responses.
+4. The patient submits the completed symptom assessment.
+5. The API requests a prediction from the Flask AI service.
+6. The patient receives a preliminary report containing:
+   - up to three predicted conditions;
+   - confidence scores;
+   - human-readable reasoning;
+   - symptom contribution information;
+   - condition overview and precaution data; and
+   - safety and clinical disclaimer language.
+7. The case remains available for physician review.
+
+### Clinician journey
+
+1. A doctor or administrator opens the protected submissions queue.
+2. The clinician reviews patient-reported symptoms and model evidence.
+3. The clinician records `approve`, `correct`, or `override` feedback with notes.
+4. The diagnosis status and review event become part of the case history and audit trail.
+5. Analytics summarize review and triage activity.
+
+---
+
+## 4. Core Features
+
+- Adaptive symptom questionnaire with decision-tree routing
+- Top-three differential prediction
+- Random Forest classifier with persisted model artifacts
+- Human-readable explanation and severity-weighted feature contributions
+- Clinical descriptions and precaution information from bundled datasets
+- Deterministic red-flag triage guidance before/alongside AI results
+- Patient dashboard, diagnosis history, health report, and dataset viewer
+- Doctor dashboard, submissions queue, case history, review workflow, and analytics
+- Patient, doctor, and admin role separation
+- AES-256-GCM application-layer encryption for selected sensitive fields
+- Bcrypt password hashing and HTTP-only JWT cookies
+- Request validation with Zod
+- Helmet security headers, explicit CORS policy, and API rate limiting
+- PostgreSQL schema with indexes, foreign keys, audit records, and protected audit logs
+- Responsive desktop and mobile evidence screenshots
+- Docker Compose local environment
+- Render blueprint and Vercel configuration
+
+---
+
+## 5. AI/ML Model Details
+
+The AI service is a Python Flask microservice using scikit-learn.
+
+| Component | Implementation |
+| --- | --- |
+| Classifier | `RandomForestClassifier` |
+| Estimators | 120 trees |
+| Maximum depth | 25 |
+| Training split | 85% training / 15% validation, stratified, `random_state=42` |
+| Class balancing | `class_weight='balanced'` |
+| Training records | 4,920 |
+| Symptom features | 132 |
+| Disease classes | 41 |
+| Additional test set | `test_data.csv`, 42 records in the bundled dataset |
+| Model persistence | Joblib |
+| Output | Ranked condition candidates and confidence scores |
+| Explanation method | Severity-weighted symptom contribution analysis plus clinical knowledge-base text |
+
+### Important explanation accuracy note
+
+The current explainer does **not** claim to calculate SHAP values. It generates human-readable feature contributions from reported symptoms and bundled severity weights, then combines them with condition descriptions and precautions. The project includes SHAP in the Python dependency set for future or extended explainability work, but the current production response should be described as **feature contribution analysis**, not SHAP attribution.
+
+### Model artifacts
+
+The trained artifacts are stored in:
+
+```text
+ai-engine/saved_models/
+├── classifier.joblib
+├── encoder.joblib
+├── feature_names.json
+├── metrics.json
+└── scaler.joblib
+```
+
+If artifacts are unavailable, the AI engine can train an initial model from the bundled training data at startup.
+
+### Dataset boundaries
+
+The bundled datasets are open clinical/educational datasets used for a prototype. They do not establish clinical validity, diagnostic safety, demographic fairness, or regulatory approval. Accuracy metrics must be interpreted as dataset-specific engineering measurements, not real-world clinical performance.
+
+---
+
+## 6. Technical Architecture
 
 ```mermaid
-graph TB
-    subgraph Frontend["Frontend (Next.js 16)"]
-        UI_Patient["Patient Interface (/questionnaire, /diagnosis, /dashboard)"]
-        UI_Doctor["Doctor Portal (/doctor, /submissions, /review, /analytics)"]
-        UI_Datasets["Dataset Viewer (/datasets)"]
-    end
+flowchart LR
+    P["Patient browser"] --> C["Next.js client :3000"]
+    D["Doctor browser"] --> C
+    C -->|"HTTP / JSON + cookies"| A["Express API :3001"]
+    A -->|"SQL / encrypted fields"| DB[("PostgreSQL :5432")]
+    A -->|"Authenticated prediction request"| AI["Flask AI engine :5000"]
+    AI --> M["Random Forest + explanation layer"]
+    M --> AI
+    AI --> A
+    A --> C
+```
 
-    subgraph Backend["API Server (Node.js / Express)"]
-        API["REST Endpoints (:3001)"]
-        Auth["JWT Auth & Role Middleware"]
-        Crypto["AES-256-GCM Encryption"]
-        Storage["PostgreSQL 16 / In-Memory Fallback"]
-    end
+### Service responsibilities
 
-    subgraph ML["AI Service (Python / Flask)"]
-        Flask["Flask Server (:5000)"]
-        Model["Random Forest Classifier"]
-        Explainer["Feature Attribution Engine"]
-    end
+| Service | Responsibility |
+| --- | --- |
+| Next.js client | Patient and clinician user experience, authentication state, questionnaire, reports, dashboards |
+| Express API | Auth, RBAC, validation, persistence, audit logging, diagnosis orchestration, readiness checks |
+| Flask AI engine | Adaptive question support, prediction, dataset metadata, explanation, model retraining endpoint |
+| PostgreSQL | Users, questionnaire sessions, diagnoses, feedback, analytics source data, audit logs |
 
-    UI_Patient -->|HTTP / JSON| API
-    UI_Doctor -->|HTTP / JSON| API
-    UI_Datasets -->|HTTP / JSON| API
-    API --> Auth
-    API --> Crypto
-    API --> Storage
-    API -->|POST /predict| Flask
-    Flask --> Model
-    Flask --> Explainer
+### Request flow
+
+```text
+Patient response
+  -> authenticated Next.js request
+  -> Express validation and role check
+  -> PostgreSQL questionnaire record
+  -> Flask /predict request
+  -> model inference + explanation
+  -> diagnosis persistence + audit event
+  -> patient report + clinician queue
 ```
 
 ---
 
-## Tech Stack
+## 7. API Surface
 
-- **Frontend**: Next.js 16 (App Router), React 19, CSS modules / vanilla CSS
-- **Backend**: Node.js, Express 4.18, Zod (schema validation), Helmet, CORS, express-rate-limit
-- **Machine Learning**: Python 3.10+, Flask, scikit-learn (RandomForestClassifier), pandas, numpy, joblib
-- **Database**: PostgreSQL 16 (pg driver) with a durable local snapshot fallback for development only
-- **Security**: AES-256-GCM encryption at rest, bcryptjs password hashing, HTTP-only JWT cookies
-- **Containerization**: Docker, Docker Compose
+### Health
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/health` | API liveness check |
+| `GET` | `/api/health/ready` | API readiness check including AI engine availability |
+| `GET` | `/health` | AI engine health and model-loaded status |
+
+### Authentication
+
+| Method | Endpoint | Access |
+| --- | --- | --- |
+| `POST` | `/api/auth/register/patient` | Public patient registration |
+| `POST` | `/api/auth/login` | Public login |
+| `POST` | `/api/auth/refresh` | Refresh session |
+| `POST` | `/api/auth/logout` | Authenticated logout |
+
+### Patient questionnaire and diagnosis
+
+| Method | Endpoint | Access |
+| --- | --- | --- |
+| `POST` | `/api/questionnaire/start` | Patient |
+| `POST` | `/api/questionnaire/next` | Patient |
+| `GET` | `/api/questionnaire/:sessionId` | Authenticated |
+| `POST` | `/api/diagnoses` | Patient |
+| `GET` | `/api/diagnoses/latest` | Patient |
+| `GET` | `/api/diagnoses/:id` | Authorized patient/doctor |
+| `GET` | `/api/diagnoses/datasets/info` | Authenticated |
+
+### Clinician workflow
+
+| Method | Endpoint | Access |
+| --- | --- | --- |
+| `GET` | `/api/doctors/dashboard` | Doctor/admin |
+| `GET` | `/api/doctors/submissions` | Doctor/admin |
+| `GET` | `/api/doctors/submissions/:id` | Doctor/admin |
+| `GET` | `/api/doctors/case-history/:patientId` | Doctor/admin |
+| `GET` | `/api/doctors/analytics` | Doctor/admin |
+| `POST` | `/api/feedback` | Doctor/admin |
+
+### AI engine
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/predict` | Return ranked predictions and explanation data |
+| `POST` | `/next-question` | Select the next adaptive question |
+| `GET` | `/datasets/info` | Return dataset and model metadata |
+| `POST` | `/retrain` | Admin-key-protected model retraining |
+| `POST` | `/preventive-tips` | Return preventive tips for conditions |
 
 ---
 
-## Directory Structure
+## 8. Security and Privacy
+
+### Implemented protections
+
+- Passwords are hashed with bcrypt.
+- Access and refresh sessions use JWTs and HTTP-only cookies.
+- Sensitive fields such as allergies and chronic conditions are designed for AES-256-GCM encryption.
+- Express uses Helmet security headers.
+- CORS is restricted to configured origins, with deployment support for Vercel origins.
+- API requests are rate-limited by IP.
+- Zod schemas validate selected request bodies.
+- Role-based middleware separates patient and clinician capabilities.
+- Audit middleware records security-sensitive and clinical workflow actions.
+- PostgreSQL triggers prevent updates and deletes on audit logs.
+- Request IDs are generated or propagated through the API.
+
+### Production security requirements
+
+Before deploying outside a local demo:
+
+1. Replace every development secret with a high-entropy secret.
+2. Set a precise `CORS_ORIGIN`; do not use `*` with credentials.
+3. Use managed PostgreSQL with encrypted connections and backups.
+4. Store secrets in Render/Vercel secret management, not in Git.
+5. Use HTTPS everywhere.
+6. Do not record real patient data in screenshots or demo videos.
+7. Conduct a formal privacy, security, and clinical validation review before any real-world use.
+
+This repository is a prototype and should not be represented as HIPAA-, DPDP-, or regulatory-certified.
+
+---
+
+## 9. Repository Structure
 
 ```text
 .
-├── client/                     # Next.js frontend
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── (dashboard)/    # Authenticated patient and doctor routes
-│   │   │   │   ├── dashboard/      # Patient dashboard and past records
-│   │   │   │   ├── questionnaire/  # Multi-step symptom questionnaire
-│   │   │   │   ├── diagnosis/      # Differential diagnosis and score breakdown
-│   │   │   │   ├── health-report/  # Patient health summary
-│   │   │   │   ├── datasets/       # Training dataset viewer
-│   │   │   │   └── doctor/         # Clinician queue, review, and analytics
-│   │   │   ├── login/          # Login page
-│   │   │   ├── register/       # Patient registration
-│   │   │   ├── globals.css     # Global styles and theme tokens
-│   │   │   └── page.js         # Landing page
-│   │   ├── components/         # Reusable UI elements and icons
-│   │   └── context/            # Authentication context and HTTP helpers
-│   └── package.json
-│
-├── server/                     # Express REST API
-│   ├── src/
-│   │   ├── config/             # Database connection, crypto, JWT config
-│   │   ├── controllers/        # Request handlers for auth, diagnosis, etc.
-│   │   ├── middleware/         # Auth verification, role checks, validation
-│   │   ├── routes/             # API route definitions
-│   │   ├── utils/              # Error handling and helper functions
-│   │   ├── __tests__/          # Jest test suite
-│   │   └── index.js            # Server entry point
-│   └── package.json
-│
-├── ai-engine/                  # Python Flask classification service
-│   ├── data/                   # Clinical datasets (CSV format)
-│   │   ├── training_data.csv       # 4,920 records, 132 symptom columns
-│   │   ├── test_data.csv           # 42 validation test cases
-│   │   ├── symptom_Description.csv # Condition summaries
-│   │   ├── symptom_precaution.csv  # Care precautions per condition
-│   │   └── symptom_severity.csv    # Symptom severity weights
-│   ├── saved_models/           # Serialized model artifacts (.joblib)
-│   ├── models/                 # Classifier, decision tree, and explainer logic
-│   ├── app.py                  # Flask application entry point
-│   ├── test_logic.py           # Unit tests
+├── ai-engine/
+│   ├── app.py                 # Flask endpoints
+│   ├── config.py              # AI configuration
+│   ├── data/                  # Training, test, and clinical knowledge datasets
+│   ├── models/                # Classifier, adaptive tree, and explanation logic
+│   ├── saved_models/          # Serialized model artifacts and metrics
+│   ├── test_logic.py          # AI engine tests
 │   └── requirements.txt
-│
+├── client/
+│   ├── src/app/               # Next.js routes and pages
+│   ├── src/components/        # Reusable UI components
+│   ├── src/context/           # Auth and API state
+│   └── package.json
 ├── database/
-│   ├── schema.sql              # Table definitions and audit triggers
-│   └── seed.sql                # Seed accounts and questionnaire nodes
-│
-├── docker-compose.yml          # Container configuration
-├── .env.example                # Sample environment variables
+│   ├── schema.sql             # Tables, indexes, triggers
+│   └── seed.sql               # Demo records and questionnaire data
+├── server/
+│   ├── src/config/            # Database, JWT, encryption
+│   ├── src/controllers/       # API handlers
+│   ├── src/middleware/        # Auth, RBAC, audit, validation
+│   ├── src/routes/            # REST routes
+│   ├── src/__tests__/         # Jest tests
+│   └── package.json
+├── qa-evidence/               # Repeatable browser journey and screenshots
+├── docker-compose.yml         # Local four-service environment
+├── render.yaml                # Render API and AI services
+├── vercel.json                # Vercel frontend build
+├── projectreport.md           # Extended academic report
+├── MediscanAI_Presentation.pptx
 └── README.md
 ```
 
 ---
 
-## Getting Started
+## 10. Local Setup
 
 ### Prerequisites
 
-- Node.js 18+ and npm
-- Python 3.10+
-- (Optional) Docker and Docker Compose
-- (Optional) PostgreSQL 16 (an in-memory store is used if PostgreSQL is not running)
+- Node.js 18 or newer
+- npm
+- Python 3.10 or newer
+- Docker Desktop and Docker Compose (recommended), or PostgreSQL 16
 
----
+### Option A: Docker Compose
 
-### Local Setup
+From the repository root:
 
-#### 1. Environment Variables
-
-Copy `.env.example` to `.env`:
-
-```bash
-cp .env.example .env
-```
-
-*(On Windows PowerShell: `Copy-Item .env.example .env`)*
-
-The default configuration points to local ports (`3000` client, `3001` server, `5000` AI engine) and contains development secrets.
-
-#### 2. Start the AI Engine
-
-```bash
-cd ai-engine
-pip install -r requirements.txt
-python app.py
-```
-
-The service runs on `http://localhost:5000`.
-
-#### 3. Start the Backend API
-
-In a new terminal:
-
-```bash
-cd server
-npm install
-npm run dev
-```
-
-The server runs on `http://localhost:3001`. If a PostgreSQL instance is not detected on port 5432, it will use a durable local snapshot at `server/.data/mock-db.json` so demo data survives restarts. This fallback is for local development only; production deployments must use PostgreSQL.
-
-#### 4. Start the Frontend
-
-In a new terminal:
-
-```bash
-cd client
-npm install
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-The API readiness endpoint at `http://localhost:3001/api/health/ready`
-returns `200` when the API and AI engine are available, or `503` when the
-AI engine is unavailable.
-
-The API performs a deterministic red-flag triage pass before storing AI results.
-Severe breathing difficulty, coughing blood, and extremely low energy are surfaced
-as urgent guidance; this is safety guidance, not a diagnosis. The repeatable browser
-journey, screenshots, and demo recording storyboard are maintained in `qa-evidence/`.
-
----
-
-### Docker Setup
-
-To run all services in containers:
-
-```bash
-docker-compose up --build -d
+```powershell
+docker compose up --build
 ```
 
 Services:
-- Client: `http://localhost:3000`
-- API Server: `http://localhost:3001`
-- AI Engine: `http://localhost:5000`
-- PostgreSQL: `localhost:5432`
+
+| Service | Address |
+| --- | --- |
+| Next.js client | http://localhost:3000 |
+| Express API | http://localhost:3001 |
+| API liveness | http://localhost:3001/api/health |
+| API readiness | http://localhost:3001/api/health/ready |
+| Flask AI engine | http://localhost:5000 |
+| PostgreSQL | localhost:5432 |
+
+### Option B: Run locally
+
+Create the root environment file:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Start the AI engine:
+
+```powershell
+Set-Location ai-engine
+python -m pip install -r requirements.txt
+python app.py
+```
+
+Start the API in a second terminal:
+
+```powershell
+Set-Location server
+npm install
+npm run dev
+```
+
+Start the frontend in a third terminal:
+
+```powershell
+Set-Location client
+npm install
+npm run dev
+```
+
+Open http://localhost:3000.
+
+### Environment variables
+
+Important variables are documented in [`.env.example`](.env.example):
+
+- database: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DATABASE_URL`
+- authentication: `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, expiry values
+- encryption: `ENCRYPTION_KEY`, `ENCRYPTION_IV_LENGTH`
+- services: `AI_ENGINE_URL`, `AI_ENGINE_API_KEY`, `FLASK_PORT`
+- frontend/API: `NEXT_PUBLIC_API_URL`, `CORS_ORIGIN`
+- rate limiting: `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX`
+
+Never commit `.env`, credentials, tokens, or real health data.
 
 ---
 
-### Cloud Deployment
+## 11. Deployment
 
-#### Vercel (Frontend)
+### Vercel frontend
 
-1. Import the repository into [Vercel](https://vercel.com).
-2. Set the **Root Directory** to `client` (or let Vercel use the root `vercel.json`).
-3. Add the environment variable:
-   - `NEXT_PUBLIC_API_URL`: `https://<your-backend-service>.onrender.com/api`
-4. Deploy.
+The root [`vercel.json`](vercel.json) configures a Next.js build from `client/`. Set:
 
-#### Render (Backend & AI Microservice)
+```text
+NEXT_PUBLIC_API_URL=https://<your-api-service>/api
+```
 
-The repository includes a `render.yaml` Blueprint specification for deploying both services:
+### Render backend and AI engine
 
-**Option 1: Blueprint Deployment (Recommended)**
-1. Go to the [Render Dashboard](https://dashboard.render.com) and click **New** > **Blueprint**.
-2. Connect your repository. Render will detect `render.yaml` and configure both services:
-   - `althea-api`: Node.js Express service (`server`)
-   - `althea-ai-engine`: Python Flask/Gunicorn service (`ai-engine`)
-3. Set `AI_ENGINE_URL` on the API service to your AI Engine Render URL.
+[`render.yaml`](render.yaml) defines:
 
-**Option 2: Manual Web Services**
-1. **AI Engine**:
-   - Runtime: Python 3
-   - Root Directory: `ai-engine`
-   - Build Command: `pip install -r requirements.txt`
-   - Start Command: `gunicorn --bind 0.0.0.0:$PORT app:app`
-2. **Backend API**:
-   - Runtime: Node
-   - Root Directory: `server`
-   - Build Command: `npm install`
-   - Start Command: `npm start`
-   - Environment Variables:
-     - `NODE_ENV`: `production`
-     - `AI_ENGINE_URL`: `https://<ai-service>.onrender.com`
-     - `CORS_ORIGIN`: `https://<your-vercel-domain>.vercel.app`
-     - `JWT_ACCESS_SECRET`: `<random-secret>`
-     - `JWT_REFRESH_SECRET`: `<random-secret>`
-     - `ENCRYPTION_KEY`: `<64-hex-characters>`
+- `althea-api`: Node/Express service rooted at `server`
+- `althea-ai-engine`: Python/Gunicorn service rooted at `ai-engine`
+
+After deployment, set `AI_ENGINE_URL` on the API service to the public AI engine URL and set `CORS_ORIGIN` to the deployed frontend origin. The API health check is `/api/health`; the AI health check is `/health`.
+
+### Production deployment checklist
+
+- [ ] Deploy frontend and API over HTTPS.
+- [ ] Configure exact frontend/API origins.
+- [ ] Configure generated JWT, encryption, and AI service secrets.
+- [ ] Attach production PostgreSQL; do not rely on a development fallback.
+- [ ] Confirm `/api/health/ready` returns `200`.
+- [ ] Create a synthetic demo account.
+- [ ] Verify patient and doctor role boundaries.
+- [ ] Remove all real or sensitive data from screenshots and recordings.
 
 ---
 
-## Seed Accounts
+## 12. Verification and Evidence
 
-The following test accounts are pre-configured:
+### Automated checks
 
-| Role | Email | Password | Scope |
-| :--- | :--- | :--- | :--- |
-| Doctor | `sarah.mitchell@hospital.com` | `Doctor@123` | Patient queue, review workflow, analytics |
-| Doctor | `james.rodriguez@hospital.com` | `Doctor@123` | Patient queue, review workflow |
-| Admin | `admin@hospital.com` | `Doctor@123` | System oversight and analytics |
-| Patient | Self-register at `/register` | User-defined | Questionnaire, diagnosis results, patient dashboard |
+Run the smallest relevant checks:
 
----
-
-## Running Tests
-
-### Backend Tests (Jest)
-
-Tests covering encryption, JWT token management, user data sanitization, and Zod input validation schemas:
-
-```bash
-cd server
+```powershell
+# Backend
+Set-Location server
 npm test
-```
 
-### AI Engine Tests (Python)
-
-Tests covering dataset loading, model predictions, and feature attribution:
-
-```bash
-cd ai-engine
+# AI engine
+Set-Location ..\ai-engine
 python test_logic.py
-```
 
-### Client Build Verification
-
-```bash
-cd client
+# Frontend production build
+Set-Location ..\client
 npm run build
 ```
 
----
+### Browser evidence
 
-## API Reference
+The [`qa-evidence/`](qa-evidence/) folder contains:
 
-### Authentication (`/api/auth`)
+- repeatable browser journey instructions;
+- landing, registration, login, questionnaire, diagnosis, and health-report screenshots;
+- desktop and mobile responsive evidence;
+- doctor overview, submissions, and analytics screenshots; and
+- a privacy-safe video storyboard using synthetic data.
 
-| Method | Endpoint | Access | Description |
-| :--- | :--- | :--- | :--- |
-| `POST` | `/api/auth/register/patient` | Public | Register new patient account |
-| `POST` | `/api/auth/login` | Public | Authenticate user, set auth cookie, return JWT |
-| `POST` | `/api/auth/refresh` | Public | Refresh access token |
-| `POST` | `/api/auth/logout` | Authenticated | Clear session cookie |
+The QA evidence is designed for reproducible demos. Do not capture passwords, tokens, cookies, developer tools, database snapshots, or real patient information.
 
-### Questionnaire (`/api/questionnaire`)
+### Verification matrix
 
-| Method | Endpoint | Access | Description |
-| :--- | :--- | :--- | :--- |
-| `POST` | `/api/questionnaire/start` | Patient | Start new session, returns root question node |
-| `POST` | `/api/questionnaire/next` | Patient | Submit answer, returns next question or completion status |
-
-### Diagnosis (`/api/diagnoses`)
-
-| Method | Endpoint | Access | Description |
-| :--- | :--- | :--- | :--- |
-| `POST` | `/api/diagnoses` | Patient | Request diagnosis based on questionnaire responses |
-| `GET` | `/api/diagnoses/:id` | Patient/Doctor | Get specific diagnosis and feature attribution data |
-| `GET` | `/api/diagnoses/latest` | Patient | Get most recent diagnosis for the current user |
-| `GET` | `/api/diagnoses/datasets/info` | Authenticated | Get dataset summary and class distribution |
-
-### Doctor Portal (`/api/doctors`, `/api/feedback`)
-
-| Method | Endpoint | Access | Description |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/api/doctors/dashboard` | Doctor | Dashboard metrics (pending cases, reviewed counts) |
-| `GET` | `/api/doctors/submissions` | Doctor | List patient submissions (filterable by status) |
-| `GET` | `/api/doctors/submissions/:id` | Doctor | Submission details with symptom data |
-| `POST` | `/api/feedback` | Doctor | Submit review action (`approve`, `override`, `correct`) |
-| `GET` | `/api/doctors/analytics` | Doctor/Admin | Aggregate triage and classification statistics |
+| Area | Evidence in repository |
+| --- | --- |
+| Patient flow | `qa-evidence/screenshots/questionnaire-desktop.png`, `health-report-desktop.png` |
+| Clinician flow | `doctor-overview-desktop.png`, `doctor-submissions-desktop.png` |
+| Analytics | `doctor-analytics-desktop.png` |
+| Responsive design | `datasets-mobile.png`, `doctor-submissions-mobile.png` |
+| Backend behavior | `server/src/__tests__/` |
+| AI behavior | `ai-engine/test_logic.py` |
+| Architecture | `docker-compose.yml`, `render.yaml`, `vercel.json` |
+| Presentation | [`MediscanAI_Presentation.pptx`](MediscanAI_Presentation.pptx) |
 
 ---
 
-## Security Implementation
+## 13. Demo Script for Judges
 
-- **Data Encryption**: Patient PII and sensitive health fields are encrypted using AES-256-GCM before storage.
-- **Authentication**: Stateless access and refresh tokens via JSON Web Tokens (JWT), with passwords hashed using bcrypt (12 salt rounds).
-- **Audit Logging**: PostgreSQL trigger logs insert, update, and review events to an append-only audit table.
-- **Network & Headers**: Helmet security middleware, rate limiting (100 requests per 15 minutes per IP), and explicit CORS origin whitelisting.
+Use synthetic data and keep the demo focused:
+
+1. Start at the landing page and state the safety boundary.
+2. Register a synthetic patient.
+3. Complete the adaptive questionnaire.
+4. Show the top-three result, confidence, explanation, and precautions.
+5. Open the health report and explain the patient-facing summary.
+6. Sign out and show protected-route behavior.
+7. Log in as a seeded/demo clinician.
+8. Open the patient submissions queue.
+9. Review the same case and demonstrate approve/correct/override.
+10. Open analytics and show the workflow's accountability layer.
+
+For the full recording plan, see [`qa-evidence/video-storyboard.md`](qa-evidence/video-storyboard.md).
+
+---
+
+## 14. Known Limitations and Honest Next Steps
+
+MediscanAI is intentionally presented as a responsible prototype:
+
+- the training data is limited and may not represent all populations;
+- model confidence is not clinical probability or certainty;
+- the explainer uses severity-weighted contributions, not validated clinical causal reasoning;
+- no real-world clinical trial or prospective validation is claimed;
+- the development fallback database is not a production persistence strategy;
+- no external demo video, architecture PDF, or presentation URL is currently embedded in this repository;
+- multilingual support, referral integration, and probability calibration are future work; and
+- regulatory, privacy, and clinical review are required before real-world deployment.
+
+### Roadmap
+
+1. Calibrate and externally validate model probabilities.
+2. Measure clinician agreement, review time, false-negative risk, and subgroup performance.
+3. Add multilingual, accessibility-first, and low-bandwidth experiences.
+4. Add secure referral and follow-up workflows.
+5. Add clinician-approved retraining governance with dataset versioning.
+
+Being explicit about these boundaries makes the project more credible: the product is ambitious, but its claims remain evidence-based.
+
+---
+
+## 15. Submission Materials
+
+| Requirement | Status |
+| --- | --- |
+| README with project, team, use case, stack, and AI details | Complete |
+| Architecture diagram | Included in this README; editable system configuration in repository |
+| Project presentation | [`MediscanAI_Presentation.pptx`](MediscanAI_Presentation.pptx) |
+| 15–20 minute unlisted YouTube demo | Add final public URL before submission |
+| Public architecture PDF/PPT | Add final public URL before submission |
+| All links accessible without extra permission | Verify after uploading external materials |
+
+Before submitting, replace each external-link placeholder with a working public URL and test it in an incognito browser window.
 
 ---
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+No root `LICENSE` file is currently present in this repository. Choose and add an approved open-source license before claiming that the project is open source or publishing a license badge.
+
+---
+
+## Project Status
+
+MediscanAI is an academic prototype with a working full-stack architecture, model service, clinician workflow, automated test paths, deployment configuration, and browser evidence. It is not certified for clinical use and must not be used as a substitute for professional medical evaluation.
