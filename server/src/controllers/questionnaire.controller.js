@@ -71,24 +71,15 @@ const getNextQuestion = async (req, res, next) => {
       return res.status(400).json({ error: 'This questionnaire session is already completed' });
     }
 
-    // Get current node — look up by code or id
-    let currentNode;
-    const byIdResult = await query(
-      'SELECT * FROM decision_tree_nodes WHERE id = $1 AND is_active = TRUE',
-      [currentQuestionId]
-    );
-    if (byIdResult.rows.length > 0) {
-      currentNode = byIdResult.rows[0];
-    } else {
-      // Try by code
-      const byCodeResult = await query(
-        'SELECT * FROM decision_tree_nodes WHERE code = $1 AND is_active = TRUE',
-        [currentQuestionId]
-      );
-      if (byCodeResult.rows.length > 0) {
-        currentNode = byCodeResult.rows[0];
-      }
+    if (!session.current_node_code || currentQuestionId !== session.current_node_code) {
+      return res.status(409).json({ error: 'Question does not match the current questionnaire step' });
     }
+
+    const nodeResult = await query(
+      'SELECT * FROM decision_tree_nodes WHERE code = $1 AND is_active = TRUE',
+      [session.current_node_code]
+    );
+    const currentNode = nodeResult.rows[0];
 
     if (!currentNode) {
       return res.json({ completed: true, sessionId });
@@ -99,10 +90,10 @@ const getNextQuestion = async (req, res, next) => {
     if (currentNode.question_type === 'multiple_choice') {
       const answers = Array.isArray(answer) ? answer : [answer];
       const invalid = answers.filter(a => !validOptions.includes(a));
-      if (invalid.length > 0) {
+      if (answers.some(a => typeof a !== 'string') || invalid.length > 0) {
         return res.status(400).json({ error: `Invalid answer(s): ${invalid.join(', ')}` });
       }
-    } else if (typeof answer === 'string' && !validOptions.includes(answer)) {
+    } else if (typeof answer !== 'string' || !validOptions.includes(answer)) {
       return res.status(400).json({ error: `Invalid answer: ${answer}. Valid options: ${validOptions.join(', ')}` });
     }
 

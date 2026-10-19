@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, Suspense, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
@@ -19,14 +19,14 @@ import EmergencyNotice from '@/components/EmergencyNotice'
 
 function EvidenceIndicator({ confidence }) {
   const pct = Math.round(confidence * 100)
-  let label = 'Investigational Evidence'
+  let label = 'Preliminary Model Estimate'
   let tier = 'moderate'
 
   if (confidence >= 0.75) {
-    label = 'Strong Symptom Correlation'
+    label = 'Higher Model Estimate'
     tier = 'routine'
   } else if (confidence >= 0.45) {
-    label = 'Moderate Clinical Alignment'
+    label = 'Moderate Model Estimate'
     tier = 'moderate'
   }
 
@@ -37,7 +37,7 @@ function EvidenceIndicator({ confidence }) {
           {label}
         </span>
         <span className="text-caption text-tabular" style={{ fontSize: '0.75rem' }}>
-          ({pct}% statistical correlation)
+          ({pct}% model estimate)
         </span>
       </div>
       <div className="evidence-bar" style={{ maxWidth: '180px' }}>
@@ -61,12 +61,7 @@ function DiagnosisContent() {
   const [loading, setLoading] = useState(true)
   const [showTechnicalWeights, setShowTechnicalWeights] = useState(false)
 
-  useEffect(() => {
-    if (authLoading || !user) return
-    loadDiagnosis()
-  }, [authLoading, authFetch, diagnosisId, user])
-
-  const loadDiagnosis = async () => {
+  const loadDiagnosis = useCallback(async () => {
     try {
       let url = '/diagnoses/latest'
       if (diagnosisId) url = `/diagnoses/${diagnosisId}`
@@ -78,7 +73,12 @@ function DiagnosisContent() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [authFetch, diagnosisId])
+
+  useEffect(() => {
+    if (authLoading || !user) return
+    Promise.resolve().then(loadDiagnosis)
+  }, [authLoading, loadDiagnosis, user])
 
   if (loading) {
     return (
@@ -108,7 +108,7 @@ function DiagnosisContent() {
 
   const conditions = diagnosis.conditions || []
   const explanation = diagnosis.explanation || ''
-  const primaryCondition = conditions[0] || { name: 'Undetermined Condition', confidence: 0.5 }
+  const primaryCondition = conditions[0] || null
   const differentialConditions = conditions.slice(1)
 
   // Clinical metadata extraction
@@ -123,7 +123,7 @@ function DiagnosisContent() {
     <div className="animate-calm-fade" style={{ maxWidth: '820px', margin: '0 auto' }}>
       {/* Header & Verification Status */}
       <div style={{ marginBottom: '2rem' }}>
-        <div className="eyebrow-clinical mb-1">Clinical Assessment Document</div>
+        <div className="eyebrow-clinical mb-1">Assessment Summary</div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h1 className="editorial-heading-lg" style={{ fontSize: '1.875rem' }}>
@@ -132,19 +132,20 @@ function DiagnosisContent() {
             <p className="text-caption mt-1">
               Assessment ID: <span className="text-tabular">{diagnosis.id?.slice(0, 8) || 'Current'}</span> • Recorded on{' '}
               <span className="text-tabular">
-                {new Date(diagnosis.created_at || Date.now()).toLocaleDateString('en-US', {
+                {diagnosis.created_at ? new Date(diagnosis.created_at).toLocaleDateString('en-US', {
                   month: 'long',
                   day: 'numeric',
                   year: 'numeric'
-                })}
+                }) : '—'}
               </span>
             </p>
           </div>
 
           <span className={`triage-tier-badge ${diagnosis.status === 'approved' ? 'routine' : 'moderate'}`}>
-            {diagnosis.status === 'approved'
-              ? 'Verified by Physician'
-              : 'Submitted for Clinical Review'}
+            {diagnosis.status === 'approved' ? 'Reviewed by clinician'
+              : diagnosis.status === 'corrected' ? 'Corrected by clinician'
+                : diagnosis.status === 'overridden' ? 'Overridden by clinician'
+                  : 'Awaiting clinician review'}
           </span>
         </div>
       </div>
@@ -152,20 +153,21 @@ function DiagnosisContent() {
       {/* Emergency Guidance Check */}
       <EmergencyNotice className="mb-4" />
 
-      {triage?.level === 'urgent' && (
+      {(triage?.urgency_level === 'urgent' || triage?.urgency_level === 'emergency') && (
         <section className="clinical-alert clinical-alert-urgent mb-4" role="alert" aria-live="assertive">
           <div>
             <strong>{triage.title}</strong>
             <p>{triage.guidance}</p>
           </div>
-          <span className="triage-tier-badge urgent">Urgent</span>
+          <span className="triage-tier-badge urgent">{triage.urgency_level === 'emergency' ? 'Emergency' : 'Urgent'}</span>
         </section>
       )}
 
       {/* Primary Clinical Consideration Card */}
+      {primaryCondition ? (
       <div className="triage-tier-card primary mb-4" style={{ padding: '2rem' }}>
         <div className="eyebrow-clinical mb-1" style={{ color: 'var(--clinical-teal)' }}>
-          Primary Differential Consideration
+          Model Estimate
         </div>
         <h2 className="editorial-heading-lg mb-2" style={{ fontSize: '1.625rem', color: 'var(--text-primary)' }}>
           {primaryCondition.name}
@@ -194,18 +196,31 @@ function DiagnosisContent() {
 
         <div className="clinical-panel-subtle" style={{ padding: '0.875rem 1.125rem' }}>
           <p className="text-caption" style={{ fontSize: '0.8125rem', lineHeight: 1.55 }}>
-            <strong>What this means:</strong> Your reported symptom pattern shows statistical congruence with clinical presentations of {primaryCondition.name}.
+            <strong>What this means:</strong> The model assigned an estimate to {primaryCondition.name} based on your reported symptoms.
             <br />
             <strong>What this does not mean:</strong> This is not an in-person physical examination, radiological imaging, or laboratory blood test. It provides preliminary guidance to focus your upcoming clinical consultation.
           </p>
         </div>
       </div>
+      ) : (
+        <div className="clinical-panel-subtle mb-4" role="status">
+          <h2 className="heading-sm mb-1">No condition estimate available</h2>
+          <p className="text-secondary" style={{ fontSize: '0.875rem', lineHeight: 1.6 }}>
+            {explanation || 'The available information was not enough to provide a condition estimate.'}
+          </p>
+          {diagnosis.feature_contributions?.missing_evidence_hints?.length > 0 && (
+            <ul className="mt-2">
+              {diagnosis.feature_contributions.missing_evidence_hints.map((hint) => <li key={hint}>{hint}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Secondary Differential Diagnoses to Consider */}
       {differentialConditions.length > 0 && (
         <div className="mb-6">
           <h2 className="heading-sm mb-3">
-            Secondary Conditions for Physician Consideration
+            Other Model Estimates
           </h2>
           <div className="grid-2">
             {differentialConditions.map((diff, i) => (
@@ -218,7 +233,7 @@ function DiagnosisContent() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <span className="triage-tier-badge moderate" style={{ fontSize: '0.6875rem' }}>
-                    {Math.round(diff.confidence * 100)}% differential overlap
+                    {Math.round(diff.confidence * 100)}% model estimate
                   </span>
                 </div>
               </div>
@@ -337,10 +352,10 @@ function DiagnosisContent() {
       <div className="clinical-panel-subtle mb-6" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-            Clinical Validation & Reference Corpora
+            Dataset Provenance
           </div>
           <p className="text-caption mt-0.5">
-            Calibrated against 4,920 authentic patient diagnostic records across 132 validated clinical symptoms.
+            The training corpus contains synthetic symptom profiles. See the source and measured dataset details on the transparency page.
           </p>
         </div>
         <Link href="/datasets" className="btn btn-secondary btn-sm">

@@ -27,6 +27,8 @@ services:
         value: 16
       - key: AI_ENGINE_URL
         sync: false
+      - key: AI_API_KEY
+        sync: false
 
   # 2. Python AI Engine Microservice
   - type: web

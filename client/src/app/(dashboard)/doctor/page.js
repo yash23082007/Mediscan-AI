@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
 import {
@@ -18,12 +18,7 @@ export default function DoctorDashboard() {
   const [dashboard, setDashboard] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    if (authLoading || !user) return
-    loadDashboard()
-  }, [authLoading, authFetch, user])
-
-  async function loadDashboard() {
+  const loadDashboard = useCallback(async () => {
     try {
       const res = await authFetch('/doctors/dashboard')
       const data = await res.json()
@@ -33,7 +28,12 @@ export default function DoctorDashboard() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [authFetch])
+
+  useEffect(() => {
+    if (authLoading || !user) return
+    Promise.resolve().then(loadDashboard)
+  }, [authLoading, loadDashboard, user])
 
   if (loading) {
     return (
@@ -78,7 +78,7 @@ export default function DoctorDashboard() {
       <div className="grid-3 mb-4">
         <div className="clinical-card" style={{ borderLeft: pendingCount > 0 ? '4px solid var(--triage-moderate)' : '1px solid var(--border-subtle)' }}>
           <span className="text-caption" style={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Pending Physician Triage
+            Pending Clinician Review
           </span>
           <div style={{ fontFamily: 'var(--font-editorial)', fontSize: '2.25rem', fontWeight: 500, color: pendingCount > 0 ? 'var(--triage-moderate)' : 'var(--text-primary)', marginTop: '0.25rem' }}>
             {pendingCount}
@@ -96,19 +96,19 @@ export default function DoctorDashboard() {
             {stats.reviewedByMe || 0}
           </div>
           <div className="text-caption mt-1">
-            Consultations validated or calibrated with clinical notes.
+            Case reviews recorded by your account.
           </div>
         </div>
 
         <div className="clinical-card">
           <span className="text-caption" style={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Total Monitored Cohort
+            Patients with Assessments
           </span>
           <div style={{ fontFamily: 'var(--font-editorial)', fontSize: '2.25rem', fontWeight: 500, color: 'var(--text-primary)', marginTop: '0.25rem' }}>
             {stats.totalPatients || 0}
           </div>
           <div className="text-caption mt-1">
-            Active patient profiles registered across symptom monitoring programs.
+            Distinct patients represented in submitted assessments.
           </div>
         </div>
       </div>
@@ -130,7 +130,7 @@ export default function DoctorDashboard() {
               Recent Patient Intake &amp; Triage Submissions
             </h2>
             <p className="text-caption mt-0.5">
-              Review model-synthesized symptom vectors and provide physician verification or corrections.
+              Review submitted symptom assessments and record an approval, correction, or override.
             </p>
           </div>
 
@@ -160,7 +160,7 @@ export default function DoctorDashboard() {
             </thead>
             <tbody>
               {recent.map((sub, i) => {
-                const conf = sub.conditions?.[0]?.confidence || sub.confidence_scores?.[0]?.confidence || 0
+                const conf = sub.conditions?.[0]?.confidence ?? sub.confidence_scores?.[0]?.confidence ?? null
                 const isPending = sub.status === 'pending'
                 const isApproved = sub.status === 'approved'
 
@@ -177,7 +177,7 @@ export default function DoctorDashboard() {
                     </td>
                     <td>
                       <span className="text-caption text-tabular" style={{ fontWeight: 600, color: conf >= 0.7 ? 'var(--clinical-teal)' : 'var(--triage-moderate)' }}>
-                        {Math.round(conf * 100)}%
+                        {typeof conf === 'number' ? `${Math.round(conf * 100)}% model estimate` : 'No estimate'}
                       </span>
                     </td>
                     <td>

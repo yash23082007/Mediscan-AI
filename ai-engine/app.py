@@ -34,6 +34,8 @@ explainer = DiagnosisExplainer()
 eig_selector = EIGSelector(classifier)
 
 AI_API_KEY = os.getenv('AI_API_KEY')
+if (os.getenv('APP_ENV') or os.getenv('NODE_ENV') or os.getenv('FLASK_ENV')) == 'production' and not AI_API_KEY:
+    raise RuntimeError('AI_API_KEY must be configured in production')
 
 def verify_api_key():
     """Verify internal service API key in constant time (SEC11)."""
@@ -221,38 +223,22 @@ def datasets_info():
         'status': 'active',
         'metrics': classifier.metrics,
         'symptoms_count': len(classifier.feature_names),
-        'conditions_count': len(classifier.label_encoder.classes_) if classifier.label_encoder else 41,
+        'conditions_count': len(classifier.label_encoder.classes_) if classifier.label_encoder else 0,
         'datasets': [
             {
+                'id': 'training',
                 'name': 'Disease-Symptom Training Profiles',
                 'source': 'Kaggle (Disease Prediction from Symptoms)',
                 'url': 'https://www.kaggle.com/datasets/itachi9604/disease-symptom-description-dataset',
-                'records': 4920,
-                'unique_profiles': 304,
-                'features': 132,
-                'target_classes': 41,
+                'records': classifier.metrics.get('num_samples', 0),
+                'unique_profiles': classifier.metrics.get('unique_profiles', 0),
+                'features': len(classifier.feature_names),
+                'target_classes': len(classifier.label_encoder.classes_) if classifier.label_encoder else 0,
                 'type': 'Synthetic symptom combination profiles based on clinical presentation templates'
-            },
-            {
-                'name': 'Medical Condition Pathology Descriptions',
-                'source': 'Kaggle Medical Knowledge Base',
-                'records': 41,
-                'type': 'Condition etiology and pathology overviews'
-            },
-            {
-                'name': 'Clinical Precautions & Care Guidelines',
-                'source': 'Public Health Guidance Knowledge Base',
-                'records': 41,
-                'precautions_per_disease': 4,
-                'type': 'Non-pharmacological precautions and consultation advice'
-            },
-            {
-                'name': 'Symptom Clinical Severity Matrix',
-                'source': 'Emergency Medicine Triage Weights',
-                'records': 132,
-                'scale': '1 to 7',
-                'type': 'Relative symptom severity weights'
             }
+        ]
+    })
+
 # ============================================
 # VERNACULAR SYMPTOM EXTRACTION (NLU §5.6)
 # ============================================

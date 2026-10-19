@@ -3,36 +3,25 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
-import {
-  IconUser,
-  IconShield
-} from '@/components/Icons'
+import { IconUser } from '@/components/Icons'
 import EmergencyNotice from '@/components/EmergencyNotice'
 import ClinicalDisclaimer from '@/components/ClinicalDisclaimer'
 
 export default function HealthReportPage() {
   const { user, authFetch } = useAuth()
   const [history, setHistory] = useState([])
-  const [latestDiagnosis, setLatestDiagnosis] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function loadData() {
       try {
-        const [histRes, latestRes] = await Promise.all([
-          authFetch('/api/patients/history'),
-          authFetch('/api/diagnoses/latest')
-        ])
+        const histRes = await authFetch(`/patients/${user?.id}/history`)
 
         if (histRes.ok) {
           const histData = await histRes.json()
           setHistory(histData.history || [])
         }
 
-        if (latestRes.ok) {
-          const latestData = await latestRes.json()
-          setLatestDiagnosis(latestData.diagnosis)
-        }
       } catch (err) {
         console.error('Failed to load health summary data:', err)
       } finally {
@@ -41,7 +30,7 @@ export default function HealthReportPage() {
     }
 
     loadData()
-  }, [authFetch])
+  }, [authFetch, user?.id])
 
   if (loading) {
     return (
@@ -55,10 +44,6 @@ export default function HealthReportPage() {
   }
 
   const reviewedCheckups = history.filter(h => h.status === 'approved' || h.status === 'corrected').length
-
-  // Extract real precautions from the patient's own latest assessment (F12)
-  const realPrecautions = latestDiagnosis?.feature_contributions?.precautions || []
-  const primaryCondition = latestDiagnosis?.conditions?.[0]?.name || null
 
   return (
     <div className="animate-calm-fade" style={{ maxWidth: '880px', margin: '0 auto' }}>
@@ -122,16 +107,16 @@ export default function HealthReportPage() {
           </div>
 
           <div className="clinical-panel-subtle" style={{ padding: '0.875rem 1rem' }}>
-            <span className="text-caption">Total Consultations</span>
+            <span className="text-caption">Consultations in this view</span>
             <div style={{ fontWeight: 600, fontSize: '0.9375rem', marginTop: '0.25rem', color: 'var(--clinical-teal)' }}>
-              {history.length} Completed
+              {history.length}
             </div>
           </div>
 
           <div className="clinical-panel-subtle" style={{ padding: '0.875rem 1rem' }}>
-            <span className="text-caption">Physician Reviews</span>
+            <span className="text-caption">Clinician Reviews</span>
             <div style={{ fontWeight: 600, fontSize: '0.9375rem', marginTop: '0.25rem', color: 'var(--clinical-forest)' }}>
-              {reviewedCheckups} Verified
+              {reviewedCheckups} recorded
             </div>
           </div>
         </div>
@@ -164,8 +149,7 @@ export default function HealthReportPage() {
             <tbody>
               {history.map((record) => {
                 const primary = record.conditions?.[0]
-                const conf = primary?.confidence || 0
-                const isApproved = record.status === 'approved' || record.status === 'reviewed'
+                const isApproved = record.status === 'approved' || record.status === 'corrected'
 
                 return (
                   <tr key={record.id}>
@@ -181,7 +165,7 @@ export default function HealthReportPage() {
                     </td>
                     <td>
                       <span className="text-caption text-tabular">
-                        {Math.round(conf * 100)}% estimate
+                        {typeof primary?.confidence === 'number' ? `${Math.round(primary.confidence * 100)}% estimate` : 'No estimate'}
                       </span>
                     </td>
                     <td>
@@ -205,29 +189,6 @@ export default function HealthReportPage() {
           </table>
         )}
       </div>
-
-      {/* Evidence-Based Condition Precautions */}
-      {realPrecautions.length > 0 && (
-        <div className="clinical-card mb-6" style={{ padding: '1.75rem' }}>
-          <h2 className="heading-sm mb-3" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <IconShield size={18} color="var(--clinical-teal)" />
-            Clinical Guidance for {primaryCondition || 'Identified Symptoms'}
-          </h2>
-          <p className="text-caption mb-3">
-            Actionable care guidelines sourced from official medical health protocols for this condition:
-          </p>
-
-          <div className="grid-2" style={{ gap: '1rem' }}>
-            {realPrecautions.map((precaution, i) => (
-              <div key={i} className="clinical-panel-subtle" style={{ padding: '1rem' }}>
-                <div style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-primary)' }}>
-                  {i + 1}. {precaution.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Official Medical Disclaimer */}
       <ClinicalDisclaimer />

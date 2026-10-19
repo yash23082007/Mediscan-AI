@@ -14,7 +14,8 @@ describe('Security & Encryption Tests', () => {
     const encrypted = encrypt(sensitiveData);
 
     expect(encrypted).not.toBe(sensitiveData);
-    expect(encrypted.split(':')).toHaveLength(3); // iv:encrypted:tag
+    expect(encrypted.split(':')).toHaveLength(4); // version:iv:encrypted:tag
+    expect(encrypted.split(':')[0]).toBe('v1');
 
     const decrypted = decrypt(encrypted);
     expect(decrypted).toBe(sensitiveData);

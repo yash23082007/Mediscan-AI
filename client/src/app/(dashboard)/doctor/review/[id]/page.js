@@ -193,7 +193,7 @@ export default function ReviewPage() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span className="text-caption text-tabular" style={{ fontWeight: 600, color: 'var(--clinical-teal)' }}>
-                  {Math.round(condition.confidence * 100)}% correlation
+                  {typeof condition.confidence === 'number' ? `${Math.round(condition.confidence * 100)}% model estimate` : 'No estimate'}
                 </span>
               </div>
             </div>

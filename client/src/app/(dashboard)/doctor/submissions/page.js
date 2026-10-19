@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, Suspense, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
@@ -22,12 +22,7 @@ function SubmissionsContent() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState(statusFilter)
 
-  useEffect(() => {
-    if (authLoading) return
-    loadSubmissions()
-  }, [authLoading, authFetch, filter])
-
-  async function loadSubmissions() {
+  const loadSubmissions = useCallback(async () => {
     setLoading(true)
     try {
       const url = filter ? `/doctors/submissions?status=${filter}` : '/doctors/submissions'
@@ -40,7 +35,12 @@ function SubmissionsContent() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [authFetch, filter])
+
+  useEffect(() => {
+    if (authLoading) return
+    Promise.resolve().then(loadSubmissions)
+  }, [authLoading, loadSubmissions])
 
   const filterOptions = [
     { key: '', label: 'All Submissions' },
@@ -59,7 +59,7 @@ function SubmissionsContent() {
           Patient Assessment Queue
         </h1>
         <p className="text-secondary mt-1" style={{ fontSize: '0.9375rem' }}>
-          Evaluate model-generated differential diagnoses, review patient history, and record physician sign-offs.
+          Review model estimates and patient history, then record your case review.
         </p>
       </div>
 
@@ -106,7 +106,7 @@ function SubmissionsContent() {
             </thead>
             <tbody>
               {submissions.map((sub, i) => {
-                const conf = sub.conditions?.[0]?.confidence || sub.confidence_scores?.[0]?.confidence || 0
+                const conf = sub.conditions?.[0]?.confidence ?? sub.confidence_scores?.[0]?.confidence ?? null
                 const isPending = sub.status === 'pending'
                 const isApproved = sub.status === 'approved'
 
@@ -124,7 +124,7 @@ function SubmissionsContent() {
                     </td>
                     <td>
                       <span className="text-caption text-tabular" style={{ fontWeight: 600, color: conf >= 0.7 ? 'var(--clinical-teal)' : 'var(--triage-moderate)' }}>
-                        {Math.round(conf * 100)}%
+                        {typeof conf === 'number' ? `${Math.round(conf * 100)}% model estimate` : 'No estimate'}
                       </span>
                     </td>
                     <td>

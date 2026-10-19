@@ -329,7 +329,7 @@ function RegisterForm() {
           color: 'var(--text-muted)'
         }}>
           <IconShield size={14} color="var(--clinical-sage)" />
-          <span>Patient data is strictly partitioned and encrypted with AES-256 standards.</span>
+          <span>Allergies and chronic conditions are encrypted before database storage.</span>
         </div>
       </div>
     </div>

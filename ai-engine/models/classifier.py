@@ -190,9 +190,7 @@ class MedicalClassifier:
                 cond_name = str(classes[idx]).strip()
                 candidates.append({
                     'condition': cond_name,
-                    'confidence': round(prob, 4), # Raw calibrated probability (no 5x inflation!)
-                    'description': self.kb.get_description(cond_name),
-                    'precautions': self.kb.get_precautions(cond_name)
+                    'confidence': round(prob, 4) # Raw calibrated probability (no 5x inflation!)
                 })
 
         # Determine confidence status (S3)

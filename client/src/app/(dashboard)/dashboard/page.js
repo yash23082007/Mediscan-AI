@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
 import {
@@ -18,30 +18,24 @@ import EmergencyNotice from '@/components/EmergencyNotice'
 export default function PatientDashboard() {
   const { user, authFetch, loading: authLoading } = useAuth()
   const [history, setHistory] = useState([])
-  const [gamification, setGamification] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    if (authLoading || !user) return
-    loadData()
-  }, [authLoading, authFetch, user])
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     try {
-      const [histRes, gamRes] = await Promise.all([
-        authFetch(`/patients/${user?.id}/history?limit=5`),
-        authFetch(`/patients/${user?.id}/gamification`)
-      ])
+      const histRes = await authFetch(`/patients/${user?.id}/history?limit=5`)
       const histData = await histRes.json()
-      const gamData = await gamRes.json()
       setHistory(histData.history || [])
-      setGamification(gamData.gamification || {})
     } catch (err) {
       console.error('Dashboard load error:', err)
     } finally {
       setLoading(false)
     }
-  }
+  }, [authFetch, user])
+
+  useEffect(() => {
+    if (authLoading || !user) return
+    Promise.resolve().then(loadData)
+  }, [authLoading, loadData, user])
 
   if (loading) {
     return (
@@ -88,28 +82,28 @@ export default function PatientDashboard() {
         <div className="clinical-card workspace-stat-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <span className="text-caption" style={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Recorded Assessments
+              Recent Assessments
             </span>
             <div style={{ fontFamily: 'var(--font-editorial)', fontSize: '2rem', fontWeight: 500, color: 'var(--text-primary)', marginTop: '0.375rem' }}>
-              {gamification?.total_checkups || history.length || 0}
+              {history.length}
             </div>
           </div>
           <div className="text-caption mt-2">
-            Longitudinal consultations stored under AES-256 encryption.
+            Assessments recorded in your history.
           </div>
         </div>
 
         <div className="clinical-card workspace-stat-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <span className="text-caption" style={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Physician Oversight
+              Clinician Review Status
             </span>
             <div style={{ fontFamily: 'var(--font-editorial)', fontSize: '2rem', fontWeight: 500, color: 'var(--clinical-teal)', marginTop: '0.375rem' }}>
               {reviewedCount} / {history.length}
             </div>
           </div>
           <div className="text-caption mt-2">
-            Assessments formally reviewed and verified by licensed practitioners.
+            Review status shown for the assessments in your recent history.
           </div>
         </div>
 
@@ -179,8 +173,8 @@ export default function PatientDashboard() {
               <tbody>
                 {history.map((record, i) => {
                   const primaryCondition = record.conditions?.[0]
-                  const confidenceVal = primaryCondition?.confidence || 0
-                  const isApproved = record.status === 'approved'
+                  const confidenceVal = typeof primaryCondition?.confidence === 'number' ? primaryCondition.confidence : null
+                  const isReviewed = record.status === 'approved' || record.status === 'corrected'
                   const isPending = record.status === 'pending'
 
                   return (
@@ -206,18 +200,18 @@ export default function PatientDashboard() {
                           }}>
                             <div style={{
                               height: '100%',
-                              width: `${Math.round(confidenceVal * 100)}%`,
+                              width: `${Math.round((confidenceVal || 0) * 100)}%`,
                               background: confidenceVal >= 0.7 ? 'var(--clinical-teal)' : 'var(--triage-moderate)'
                             }}></div>
                           </div>
                           <span className="text-caption text-tabular">
-                            {confidenceVal >= 0.75 ? 'Strong correlation' : confidenceVal >= 0.5 ? 'Moderate' : 'Investigational'}
+                            {confidenceVal === null ? 'No estimate' : `${Math.round(confidenceVal * 100)}% estimate`}
                           </span>
                         </div>
                       </td>
                       <td>
                         <span className={`triage-tier-badge ${isApproved ? 'routine' : isPending ? 'moderate' : 'urgent'}`}>
-                          {isApproved ? 'Verified by Doctor' : isPending ? 'In Clinician Review' : record.status}
+                          {isReviewed ? 'Reviewed by clinician' : isPending ? 'In clinician review' : record.status}
                         </span>
                       </td>
                       <td style={{ textAlign: 'right' }}>

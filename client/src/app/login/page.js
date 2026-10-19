@@ -132,7 +132,7 @@ function LoginForm() {
           color: 'var(--text-muted)'
         }}>
           <IconLock size={14} color="var(--clinical-sage)" />
-          <span>Protected by AES-256 encryption. Patient confidentiality is strictly maintained.</span>
+          <span>Allergies and chronic conditions are encrypted before database storage.</span>
         </div>
       </div>
     </div>

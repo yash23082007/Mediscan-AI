@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
 import {
@@ -13,16 +13,6 @@ import {
 } from '@/components/Icons'
 import ClinicalDisclaimer from '@/components/ClinicalDisclaimer'
 import EmergencyNotice from '@/components/EmergencyNotice'
-
-const CATEGORY_RATIONALES = {
-  respiratory: 'Evaluating pulmonary symptoms allows our clinical model to distinguish between upper airway irritation, bronchial inflammation, and deeper alveolar distress.',
-  gastrointestinal: 'Digestive symptoms help isolate gastroesophageal reflux, microbial gastroenteritis, and hepatobiliary patterns.',
-  cardiovascular: 'Thoracic discomfort and circulatory markers are evaluated to screen for cardiovascular contraindications and determine triage urgency.',
-  systemic: 'Core manifestations such as chills, pyrexia, and generalized asthenia indicate systemic inflammatory and immunological responses.',
-  dermatological: 'Cutaneous presentations provide key diagnostic clues for allergic, viral, or autoimmune etiologies.',
-  neurological: 'Cephalic and sensory symptoms are assessed to rule out neurological red flags and secondary headache syndromes.',
-  musculoskeletal: 'Joint, axial, and muscular pains differentiate systemic inflammatory arthropathies from acute viral myalgias.'
-}
 
 export default function QuestionnairePage() {
   const { authFetch, loading: authLoading } = useAuth()
@@ -39,44 +29,7 @@ export default function QuestionnairePage() {
   const [diagnosisLoading, setDiagnosisLoading] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    if (authLoading) return
-    startQuestionnaire()
-  }, [authLoading, authFetch])
-
-  // Keyboard navigation support
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (!currentQuestion || submitting || completed || diagnosisLoading) return
-
-      const options = currentQuestion.options || []
-      const isMulti = currentQuestion.question_type === 'multiple_choice'
-
-      // Number key selection (1 to 9)
-      const num = parseInt(e.key, 10)
-      if (!isNaN(num) && num >= 1 && num <= options.length) {
-        const optionVal = options[num - 1].value
-        if (isMulti) {
-          toggleMultiple(optionVal)
-        } else {
-          setSelectedAnswer(optionVal)
-        }
-      }
-
-      // Enter key to proceed if valid
-      if (e.key === 'Enter') {
-        const hasSelection = isMulti ? selectedMultiple.length > 0 : selectedAnswer !== null
-        if (hasSelection) {
-          handleNext()
-        }
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentQuestion, selectedAnswer, selectedMultiple, submitting, completed, diagnosisLoading])
-
-  async function startQuestionnaire() {
+  const startQuestionnaire = useCallback(async () => {
     try {
       const res = await authFetch('/questionnaire/start', { method: 'POST' })
       const data = await res.json()
@@ -89,9 +42,32 @@ export default function QuestionnairePage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [authFetch])
 
-  async function handleNext() {
+  useEffect(() => {
+    if (authLoading) return
+    Promise.resolve().then(startQuestionnaire)
+  }, [authLoading, startQuestionnaire])
+
+  const requestDiagnosis = useCallback(async () => {
+    setDiagnosisLoading(true)
+    try {
+      const res = await authFetch('/diagnoses', {
+        method: 'POST',
+        body: JSON.stringify({ questionnaire_id: sessionId })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Clinical analysis is unavailable')
+      router.push(`/diagnosis?id=${data.diagnosis?.id}`)
+    } catch (err) {
+      console.error('Diagnosis synthesis error:', err)
+      setCompleted(false)
+      setDiagnosisLoading(false)
+      setError(err.message || 'Clinical analysis is temporarily unavailable. Your responses are saved; please try again shortly.')
+    }
+  }, [authFetch, router, sessionId])
+
+  const handleNext = useCallback(async () => {
     if (!currentQuestion) return
 
     const isMulti = currentQuestion.question_type === 'multiple_choice'
@@ -111,7 +87,7 @@ export default function QuestionnairePage() {
         method: 'POST',
         body: JSON.stringify({
           sessionId,
-          currentQuestionId: currentQuestion.id,
+          currentQuestionId: currentQuestion.code,
           answer
         })
       })
@@ -133,7 +109,7 @@ export default function QuestionnairePage() {
     } finally {
       setSubmitting(false)
     }
-  }
+  }, [answeredCount, authFetch, currentQuestion, requestDiagnosis, selectedAnswer, selectedMultiple, sessionId])
 
   function handleBack() {
     if (answeredHistory.length === 0) return
@@ -154,34 +130,39 @@ export default function QuestionnairePage() {
     }
   }
 
-  async function requestDiagnosis() {
-    setDiagnosisLoading(true)
-    try {
-      const res = await authFetch('/diagnoses', {
-        method: 'POST',
-        body: JSON.stringify({ questionnaire_id: sessionId })
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Clinical analysis is unavailable')
-      router.push(`/diagnosis?id=${data.diagnosis?.id}`)
-    } catch (err) {
-      console.error('Diagnosis synthesis error:', err)
-      setCompleted(false)
-      setDiagnosisLoading(false)
-      setError(err.message || 'Clinical analysis is temporarily unavailable. Your responses are saved; please try again shortly.')
-    }
-  }
-
-  function toggleMultiple(value) {
+  const toggleMultiple = useCallback((value) => {
     setSelectedMultiple(prev =>
       prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]
     )
-  }
+  }, [])
+
+  // Keyboard navigation support
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (!currentQuestion || submitting || completed || diagnosisLoading) return
+
+      const options = currentQuestion.options || []
+      const isMulti = currentQuestion.question_type === 'multiple_choice'
+      const num = parseInt(e.key, 10)
+      if (!isNaN(num) && num >= 1 && num <= options.length) {
+        const optionVal = options[num - 1].value
+        if (isMulti) toggleMultiple(optionVal)
+        else setSelectedAnswer(optionVal)
+      }
+
+      if (e.key === 'Enter') {
+        const hasSelection = isMulti ? selectedMultiple.length > 0 : selectedAnswer !== null
+        if (hasSelection) handleNext()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [currentQuestion, selectedAnswer, selectedMultiple, submitting, completed, diagnosisLoading, handleNext, toggleMultiple])
 
   const isMulti = currentQuestion?.question_type === 'multiple_choice'
   const canProceed = isMulti ? selectedMultiple.length > 0 : selectedAnswer !== null
-  const categoryKey = currentQuestion?.category?.toLowerCase() || 'general'
-  const rationaleText = CATEGORY_RATIONALES[categoryKey] || 'This symptom inquiry helps differentiate potential conditions across verified clinical datasets.'
+  const rationaleText = 'This question is part of the guided symptom intake.'
 
   if (loading) {
     return (
@@ -218,7 +199,7 @@ export default function QuestionnairePage() {
             Evaluating Clinical Evidence
           </h2>
           <p className="text-secondary mb-4" style={{ fontSize: '0.875rem', lineHeight: 1.6 }}>
-            Cross-referencing your reported symptom vector with 4,920 peer-reviewed medical cases across 41 pathological conditions...
+            Preparing your assessment summary. The model may return no estimate when the available information is insufficient.
           </p>
           <div style={{
             height: '4px',
@@ -236,7 +217,7 @@ export default function QuestionnairePage() {
             }}></div>
           </div>
           <p className="text-caption mt-3" style={{ fontSize: '0.75rem' }}>
-            Preparing explainable symptom contributions and physician review packet.
+            Loading your next questionnaire step.
           </p>
         </div>
       </div>
