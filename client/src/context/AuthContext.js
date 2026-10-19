@@ -4,7 +4,9 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 
 const AuthContext = createContext(null)
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
+// Keep auth and all API calls same-origin so Strict HttpOnly refresh cookies
+// work across client-side navigations. Next.js rewrites /api/* to the server.
+const API_URL = '/api'
 
 export function AuthProvider({ children }) {
   // Access token kept in memory only (SEC7)

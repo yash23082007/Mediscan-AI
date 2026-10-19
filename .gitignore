@@ -56,3 +56,7 @@ yarn-error.log*
 .vercel
 .data/
 server/.data/
+
+# Playwright artifacts
+client/playwright-report/
+client/test-results/

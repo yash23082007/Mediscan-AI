@@ -174,8 +174,8 @@ export default function PatientDashboard() {
                 {history.map((record, i) => {
                   const primaryCondition = record.conditions?.[0]
                   const confidenceVal = typeof primaryCondition?.confidence === 'number' ? primaryCondition.confidence : null
-                  const isReviewed = record.status === 'approved' || record.status === 'corrected'
-                  const isPending = record.status === 'pending'
+                  const isReviewed = ['approved', 'corrected', 'overridden'].includes(record.status)
+                  const isPending = ['pending', 'in_review'].includes(record.status)
 
                   return (
                     <tr key={record.id || i}>
@@ -210,8 +210,8 @@ export default function PatientDashboard() {
                         </div>
                       </td>
                       <td>
-                        <span className={`triage-tier-badge ${isApproved ? 'routine' : isPending ? 'moderate' : 'urgent'}`}>
-                          {isReviewed ? 'Reviewed by clinician' : isPending ? 'In clinician review' : record.status}
+                        <span className={`triage-tier-badge ${isReviewed ? 'routine' : isPending ? 'moderate' : 'urgent'}`}>
+                          {isReviewed ? 'Case reviewed' : isPending ? 'Awaiting review' : record.status}
                         </span>
                       </td>
                       <td style={{ textAlign: 'right' }}>

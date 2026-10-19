@@ -141,11 +141,8 @@ function DiagnosisContent() {
             </p>
           </div>
 
-          <span className={`triage-tier-badge ${diagnosis.status === 'approved' ? 'routine' : 'moderate'}`}>
-            {diagnosis.status === 'approved' ? 'Reviewed by clinician'
-              : diagnosis.status === 'corrected' ? 'Corrected by clinician'
-                : diagnosis.status === 'overridden' ? 'Overridden by clinician'
-                  : 'Awaiting clinician review'}
+          <span className={`triage-tier-badge ${['approved', 'corrected', 'overridden'].includes(diagnosis.status) ? 'routine' : 'moderate'}`}>
+            {['approved', 'corrected', 'overridden'].includes(diagnosis.status) ? 'Case reviewed' : 'Awaiting review'}
           </span>
         </div>
       </div>

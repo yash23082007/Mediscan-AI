@@ -1,106 +1,86 @@
-version: '3.8'
-
-services:
-  # ============================================
-  # PostgreSQL Database
-  # ============================================
+﻿services:
   postgres:
     image: postgres:17-alpine
-    container_name: medical_db
     restart: unless-stopped
     environment:
       POSTGRES_DB: medical_diagnosis
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres123}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - ./database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d medical_diagnosis"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  ai-engine:
+    build:
+      context: ./ai-engine
+    restart: unless-stopped
+    environment:
+      FLASK_ENV: production
+      PORT: 5000
+      AI_API_KEY: ${AI_ENGINE_API_KEY:-local-compose-only-key}
+    expose:
+      - "5000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=3)"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
 
-  # ============================================
-  # Node.js Backend Server
-  # ============================================
   server:
     build:
       context: ./server
-      dockerfile: Dockerfile
-    container_name: medical_server
     restart: unless-stopped
     environment:
       NODE_ENV: development
       PORT: 3001
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: medical_diagnosis
-      DB_USER: postgres
-      DB_PASSWORD: ${DB_PASSWORD:-postgres123}
       DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-postgres123}@postgres:5432/medical_diagnosis
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev_access_secret_change_in_prod}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_refresh_secret_change_in_prod}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-local-compose-access-secret-change-me-0001}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-local-compose-refresh-secret-change-me-0002}
       JWT_ACCESS_EXPIRY: 15m
       JWT_REFRESH_EXPIRY: 7d
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
       AI_ENGINE_URL: http://ai-engine:5000
-      AI_API_KEY: ${AI_ENGINE_API_KEY:-dev_ai_key}
+      AI_API_KEY: ${AI_ENGINE_API_KEY:-local-compose-only-key}
       CORS_ORIGIN: http://localhost:3000
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"
     depends_on:
       postgres:
         condition: service_healthy
-    volumes:
-      - ./server/src:/app/src
-
-  # ============================================
-  # Python Flask AI Engine
-  # ============================================
-  ai-engine:
-    build:
-      context: ./ai-engine
-      dockerfile: Dockerfile
-    container_name: medical_ai
-    restart: unless-stopped
-    environment:
-      FLASK_ENV: development
-      FLASK_PORT: 5000
-      DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-postgres123}@postgres:5432/medical_diagnosis
-      AI_API_KEY: ${AI_ENGINE_API_KEY:-dev_ai_key}
-    ports:
-      - "5000:5000"
-    depends_on:
-      postgres:
+      ai-engine:
         condition: service_healthy
-    volumes:
-      - ./ai-engine:/app
-      - ai_models:/app/saved_models
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
-  # ============================================
-  # Next.js Frontend (Dev Server)
-  # ============================================
   client:
     build:
       context: ./client
-      dockerfile: Dockerfile
-    container_name: medical_client
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:3001/api
-      NEXT_PUBLIC_AI_ENGINE_URL: http://localhost:5000
+      NODE_ENV: production
+      PORT: 3000
+      API_ORIGIN: http://server:3001
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
-      - server
-    volumes:
-      - ./client/src:/app/src
-      - ./client/public:/app/public
+      server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
 volumes:
   postgres_data:
-  ai_models:

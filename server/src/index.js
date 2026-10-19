@@ -22,6 +22,7 @@ const { handleSseStream, initRealtimeListener } = require('./realtime');
 const { query } = require('./config/database');
 const { validateJwtSecrets } = require('./config/jwt');
 const { getEncryptionKey } = require('./config/encryption');
+const { AI_ENGINE_URL } = require('./config/ai-engine');
 
 if (process.env.NODE_ENV === 'production') {
   validateJwtSecrets();
@@ -130,7 +131,7 @@ app.get('/api/health', (req, res) => {
 });
 
 app.get('/api/health/ready', async (req, res) => {
-  const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:5000';
+  const aiEngineUrl = AI_ENGINE_URL;
   const apiKey = process.env.AI_API_KEY;
   let aiEngine = 'unavailable';
   let database = 'unavailable';

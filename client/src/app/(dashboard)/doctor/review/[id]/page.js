@@ -28,6 +28,7 @@ export default function ReviewPage() {
   const [correctionName, setCorrectionName] = useState('')
   const [correctionConfidence, setCorrectionConfidence] = useState(0.8)
   const [success, setSuccess] = useState('')
+  const [error, setError] = useState('')
 
   const loadSubmission = useCallback(async () => {
     try {
@@ -54,6 +55,7 @@ export default function ReviewPage() {
 
     setSubmitting(true)
     setSuccess('')
+    setError('')
     try {
       const body = {
         diagnosis_id: id,
@@ -68,18 +70,20 @@ export default function ReviewPage() {
         }
       }
 
-      await authFetch('/feedback', {
+      const response = await authFetch('/feedback', {
         method: 'POST',
         body: JSON.stringify(body)
       })
+      const responseData = await response.json()
+      if (!response.ok) throw new Error(responseData.error || 'Review could not be recorded')
 
-      setSuccess(`Physician evaluation recorded: Action "${feedbackAction}" submitted.`)
+      setSuccess(`Review recorded: Action "${feedbackAction}" submitted.`)
       setFeedbackAction('')
       setNotes('')
       setCorrectionName('')
       await loadSubmission()
     } catch (err) {
-      console.error('Feedback recording error:', err)
+      setError(err.message || 'Review could not be recorded. Please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -250,12 +254,17 @@ export default function ReviewPage() {
           Physician Verification &amp; Calibration Sign-Off
         </h2>
         <p className="text-caption mb-3">
-          Your feedback updates the clinical status visible to the patient and calibrates model accuracy.
+          Your review updates the case status visible to the patient. Review feedback is recorded but is not used to retrain this model.
         </p>
 
         {success && (
           <div className="alert alert-success mb-3" role="status">
             <span>{success}</span>
+          </div>
+        )}
+        {error && (
+          <div className="alert alert-error mb-3" role="alert">
+            <span>{error}</span>
           </div>
         )}
 

@@ -3,7 +3,7 @@ const axios = require('axios');
 const { assessTriage } = require('../utils/triage');
 const { broadcastCaseEvent } = require('../realtime');
 
-const AI_ENGINE_URL = process.env.AI_ENGINE_URL || 'http://localhost:5000';
+const { AI_ENGINE_URL } = require('../config/ai-engine');
 const AI_API_KEY = process.env.AI_API_KEY;
 
 /**

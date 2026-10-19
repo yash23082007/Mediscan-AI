@@ -305,9 +305,9 @@ Then open http://localhost:3000.
 
 Never commit `.env`, credentials, tokens, or real patient information.
 
-### Render configuration
+### Deployment configuration
 
-The Render Blueprint defines the API and AI services, but does not provision a database. Before deploying, provision PostgreSQL and set `DATABASE_URL` on `althea-api`; also set `CORS_ORIGIN` and `AI_ENGINE_URL` to the deployed frontend origin and AI service URL. The API key is referenced from the AI service so both services use the same value. The API readiness check stays unhealthy until PostgreSQL and the AI service are reachable.
+The Render Blueprint provisions PostgreSQL, the API, and a private AI service. The API initializes the schema and questionnaire seed under a PostgreSQL advisory lock on first startup. The AI runtime is reachable only through Render's private network; the API key is generated once and shared through a service reference. The frontend uses a same-origin `/api/*` proxy so refresh cookies remain `HttpOnly` and `SameSite=Strict`. Set `API_ORIGIN` in the Vercel project to the deployed API's HTTPS origin and set `CORS_ORIGIN` in Render to the deployed frontend origin. The smallest Render AI and database plans are billable; review the current plan and storage costs before creating the Blueprint. The API readiness check remains unhealthy until both PostgreSQL and the model service respond.
 
 ---
 
@@ -328,9 +328,14 @@ python -B -m unittest discover -s . -p 'test_*.py'
 Set-Location ..\client
 npm run lint
 npm run build
+
+# Real-stack browser acceptance (requires running Postgres, API, AI, and Next.js)
+npx playwright install chromium
+$env:E2E_ADMIN_PASSWORD = '<one-time password printed by npm run seed:demo>'
+npm run test:e2e
 ```
 
-The repository includes UI screenshots for these flows. They are visual references, not evidence of a live end-to-end run against PostgreSQL:
+The repository includes UI screenshots as visual references. The Playwright acceptance flow exercises registration, assessment, diagnosis persistence, review, and patient status refresh against PostgreSQL:
 
 - landing page, registration, and login;
 - guided branching questionnaire;

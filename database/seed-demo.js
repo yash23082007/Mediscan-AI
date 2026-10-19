@@ -4,13 +4,15 @@
  *
  * Usage: after starting local PostgreSQL, run `node database/seed-demo.js`.
  */
-const { Pool } = require('pg');
-const bcrypt = require('bcryptjs');
+const { createRequire } = require('module');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const serverRequire = createRequire(path.resolve(__dirname, '../server/package.json'));
+const { Pool } = serverRequire('pg');
+const bcrypt = serverRequire('bcryptjs');
 
-require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+serverRequire('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -53,7 +55,10 @@ async function seedDemoAccounts() {
     )
   `);
 
-  const password = generatePassword();
+  const password = process.env.DEMO_ADMIN_PASSWORD || generatePassword();
+  if (process.env.DEMO_ADMIN_PASSWORD && password.length < 16) {
+    throw new Error('DEMO_ADMIN_PASSWORD must be at least 16 characters long');
+  }
   const hash = await bcrypt.hash(password, 12);
   await pool.query(
     `INSERT INTO doctors (name, email, password_hash, specialization, license_number, role, is_verified, is_synthetic)
@@ -66,9 +71,15 @@ async function seedDemoAccounts() {
 
   console.log('\nSynthetic local admin credentials (save these; the password is shown only once):\n');
   console.log('-'.repeat(70));
-  console.log(`  ${account.role.toUpperCase().padEnd(7)} ${account.email.padEnd(35)} ${password}`);
+  if (process.env.CI === 'true') {
+    console.log(`  ${account.role.toUpperCase().padEnd(7)} ${account.email.padEnd(35)} password supplied through the CI environment`);
+  } else {
+    console.log(`  ${account.role.toUpperCase().padEnd(7)} ${account.email.padEnd(35)} ${password}`);
+  }
   console.log('-'.repeat(70));
-  console.log('\nThis password is not stored anywhere else. Save it now.\n');
+  if (process.env.CI !== 'true') {
+    console.log('\nThis password is not stored anywhere else. Save it now.\n');
+  }
 }
 
 async function main() {
