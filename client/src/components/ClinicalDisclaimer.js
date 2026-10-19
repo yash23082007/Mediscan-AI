@@ -18,11 +18,10 @@ export default function ClinicalDisclaimer({ compact = false, className = '' }) 
         <span>Clinical Information & Safety Notice</span>
       </div>
       <p className="clinical-disclaimer-text">
-        MediscanAI is an informational triage and clinical decision-support tool designed to assist patients in understanding health symptoms.
-        <strong> It is not a substitute for clinical judgment, diagnostic confirmation, or emergency medical treatment.</strong>
+        MediscanAI is a research prototype for symptom intake and experimental model estimates. It is not clinically validated and does not provide a diagnosis.
       </p>
       <p className="clinical-disclaimer-text mt-1">
-        All assessments are preliminary and should be discussed with a licensed healthcare practitioner. In the event of a suspected medical emergency—such as acute chest pain, severe dyspnea, sudden weakness, or unconsciousness—contact emergency medical services (e.g. 911/112) without delay.
+        Discuss health concerns with a qualified healthcare professional. In the event of a suspected medical emergency, contact emergency medical services (India: 108 or 112) without delay.
       </p>
     </div>
   )

@@ -4,16 +4,15 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 
 const AuthContext = createContext(null)
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
+// Keep auth and all API calls same-origin so Strict HttpOnly refresh cookies
+// work across client-side navigations. Next.js rewrites /api/* to the server.
+const API_URL = '/api'
 
 export function AuthProvider({ children }) {
   // Access token kept in memory only (SEC7)
   const [user, setUser] = useState(null)
   const [token, setToken] = useState(null)
   const [loading, setLoading] = useState(true)
-
-  const tokenRef = useRef(token)
-  tokenRef.current = token
 
   const refreshPromiseRef = useRef(null)
 
@@ -111,7 +110,7 @@ export function AuthProvider({ children }) {
   }
 
   const logout = useCallback(async () => {
-    const currentToken = tokenRef.current
+    const currentToken = token
     setToken(null)
     setUser(null)
 
@@ -124,11 +123,11 @@ export function AuthProvider({ children }) {
     } catch (e) {
       // Ignore network errors on logout
     }
-  }, [])
+  }, [token])
 
   // Authenticated fetch with single-flight automatic refresh interceptor (UI1)
   const authFetch = useCallback(async (url, options = {}) => {
-    let activeToken = tokenRef.current
+    let activeToken = token
 
     // If no token in memory, try refreshing first
     if (!activeToken) {
@@ -169,7 +168,7 @@ export function AuthProvider({ children }) {
     }
 
     return res
-  }, [refreshAuthToken, logout])
+  }, [refreshAuthToken, logout, token])
 
   return (
     <AuthContext.Provider value={{ user, token, loading, login, registerPatient, logout, authFetch }}>

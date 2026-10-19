@@ -110,35 +110,6 @@ const getAllPatients = async (req, res, next) => {
 };
 
 /**
- * Get patient's gamification data
- * GET /api/patients/:id/gamification
- */
-const getGamification = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const result = await query(
-      'SELECT * FROM gamification WHERE patient_id = $1',
-      [id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.json({
-        gamification: {
-          health_score: 50,
-          badges: [],
-          total_checkups: 0,
-          streak_days: 0
-        }
-      });
-    }
-
-    res.json({ gamification: result.rows[0] });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
  * Get patient's diagnosis history
  * GET /api/patients/:id/history
  */
@@ -178,6 +149,5 @@ module.exports = {
   getPatient,
   updatePatient,
   getAllPatients,
-  getGamification,
   getPatientHistory
 };

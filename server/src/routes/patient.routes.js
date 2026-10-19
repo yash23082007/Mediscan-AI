@@ -8,7 +8,6 @@ const {
   getPatient,
   updatePatient,
   getAllPatients,
-  getGamification,
   getPatientHistory
 } = require('../controllers/patient.controller');
 
@@ -21,9 +20,6 @@ router.get('/', authorize(ROLES.DOCTOR, ROLES.ADMIN), auditLog('VIEW_PATIENTS', 
 // Patient profile
 router.get('/:id', authorizeOwner('id'), auditLog('VIEW_PATIENT', 'patient'), getPatient);
 router.patch('/:id', authorizeOwner('id'), validate(updatePatientSchema), auditLog('UPDATE_PATIENT', 'patient'), updatePatient);
-
-// Patient gamification
-router.get('/:id/gamification', authorizeOwner('id'), getGamification);
 
 // Patient diagnosis history
 router.get('/:id/history', authorizeOwner('id'), auditLog('VIEW_HISTORY', 'patient'), getPatientHistory);

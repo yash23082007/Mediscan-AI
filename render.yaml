@@ -1,18 +1,20 @@
-services:
-  # 1. Express Backend REST API
+﻿services:
   - type: web
-    name: althea-api
+    name: mediscan-api
     runtime: node
-    rootDir: server
-    buildCommand: npm install
-    startCommand: npm start
+    buildCommand: npm ci --prefix server
+    startCommand: cd server && npm start
     plan: free
-    healthCheckPath: /api/health
+    healthCheckPath: /api/health/ready
     envVars:
       - key: NODE_ENV
         value: production
       - key: CORS_ORIGIN
         sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mediscan-db
+          property: connectionString
       - key: JWT_ACCESS_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
@@ -23,21 +25,27 @@ services:
         value: 7d
       - key: ENCRYPTION_KEY
         generateValue: true
-      - key: ENCRYPTION_IV_LENGTH
-        value: 16
       - key: AI_ENGINE_URL
-        sync: false
+        fromService:
+          type: pserv
+          name: mediscan-ai-engine
+          property: hostport
+      - key: AI_API_KEY
+        fromService:
+          type: pserv
+          name: mediscan-ai-engine
+          envVarKey: AI_API_KEY
 
-  # 2. Python AI Engine Microservice
-  - type: web
-    name: althea-ai-engine
+  - type: pserv
+    name: mediscan-ai-engine
     runtime: python
     rootDir: ai-engine
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --bind 0.0.0.0:$PORT app:app
-    plan: free
-    healthCheckPath: /health
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 30 --access-logfile - app:app
+    plan: 0.5c-512mb
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
       - key: FLASK_ENV
         value: production
       - key: AI_API_KEY
@@ -46,3 +54,12 @@ services:
         value: ./saved_models
       - key: DATA_PATH
         value: ./data
+
+databases:
+  - name: mediscan-db
+    databaseName: medical_diagnosis
+    user: mediscan_app
+    postgresMajorVersion: '17'
+    plan: 0.1c-256mb
+    diskSizeGB: 1
+    ipAllowList: []

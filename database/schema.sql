@@ -17,6 +17,8 @@ CREATE TABLE patients (
     password_hash VARCHAR(255) NOT NULL,
     age INTEGER CHECK (age > 0 AND age < 150),
     gender VARCHAR(20) CHECK (gender IN ('male', 'female', 'other', 'prefer_not_to_say')),
+    weight NUMERIC(5,2) CHECK (weight > 0 AND weight <= 500),
+    height NUMERIC(5,2) CHECK (height > 0 AND height <= 300),
     allergies TEXT,               -- AES-256-GCM encrypted
     chronic_conditions TEXT,      -- AES-256-GCM encrypted
     is_synthetic BOOLEAN DEFAULT FALSE,
@@ -36,6 +38,7 @@ CREATE TABLE doctors (
     password_hash VARCHAR(255) NOT NULL,
     specialization VARCHAR(255) NOT NULL,
     license_number VARCHAR(100),
+    is_synthetic BOOLEAN NOT NULL DEFAULT FALSE,
     role VARCHAR(20) DEFAULT 'doctor' CHECK (role IN ('doctor', 'admin')),
     is_verified BOOLEAN DEFAULT FALSE,
     is_active BOOLEAN DEFAULT TRUE,

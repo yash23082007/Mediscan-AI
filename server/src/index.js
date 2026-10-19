@@ -19,6 +19,27 @@ const feedbackRoutes = require('./routes/feedback.routes');
 const { authenticate } = require('./middleware/auth');
 const { AppError, errorHandler } = require('./utils/errors');
 const { handleSseStream, initRealtimeListener } = require('./realtime');
+const { query } = require('./config/database');
+const { validateJwtSecrets } = require('./config/jwt');
+const { getEncryptionKey } = require('./config/encryption');
+const { AI_ENGINE_URL } = require('./config/ai-engine');
+
+if (process.env.NODE_ENV === 'production') {
+  validateJwtSecrets();
+  getEncryptionKey();
+  if (!process.env.AI_API_KEY) {
+    throw new Error('FATAL: AI_API_KEY must be configured in production');
+  }
+  if (!process.env.AI_ENGINE_URL) {
+    throw new Error('FATAL: AI_ENGINE_URL must be configured in production');
+  }
+  if (!process.env.DATABASE_URL) {
+    throw new Error('FATAL: DATABASE_URL must be configured in production');
+  }
+  if (!process.env.CORS_ORIGIN) {
+    throw new Error('FATAL: CORS_ORIGIN must be configured in production');
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -110,9 +131,17 @@ app.get('/api/health', (req, res) => {
 });
 
 app.get('/api/health/ready', async (req, res) => {
-  const aiEngineUrl = process.env.AI_ENGINE_URL || 'http://localhost:5000';
+  const aiEngineUrl = AI_ENGINE_URL;
   const apiKey = process.env.AI_API_KEY;
   let aiEngine = 'unavailable';
+  let database = 'unavailable';
+
+  try {
+    await query('SELECT 1');
+    database = 'healthy';
+  } catch (error) {
+    console.warn(`Database readiness check failed: ${error.message}`);
+  }
 
   try {
     const headers = {};
@@ -125,13 +154,13 @@ app.get('/api/health/ready', async (req, res) => {
     console.warn(`AI engine readiness check failed: ${error.message}`);
   }
 
-  const ready = aiEngine === 'healthy';
+  const ready = aiEngine === 'healthy' && database === 'healthy';
   res.status(ready ? 200 : 503).json({
     status: ready ? 'ready' : 'not_ready',
     timestamp: new Date().toISOString(),
     service: 'mediscan-api',
     checks: {
-      database: 'healthy',
+      database,
       ai_engine: aiEngine
     }
   });

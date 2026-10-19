@@ -1,7 +1,4 @@
 const { query } = require('../config/database');
-const axios = require('axios');
-
-const AI_ENGINE_URL = process.env.AI_ENGINE_URL || 'http://localhost:5000';
 
 /**
  * Start a new questionnaire session
@@ -37,7 +34,7 @@ const startQuestionnaire = async (req, res, next) => {
     res.json({
       sessionId: qrResult.rows[0].id,
       question: rootNode,
-      totalEstimatedQuestions: 8
+      answeredCount: 0
     });
   } catch (error) {
     next(error);
@@ -71,27 +68,18 @@ const getNextQuestion = async (req, res, next) => {
       return res.status(400).json({ error: 'This questionnaire session is already completed' });
     }
 
-    // Get current node — look up by code or id
-    let currentNode;
-    const byIdResult = await query(
-      'SELECT * FROM decision_tree_nodes WHERE id = $1 AND is_active = TRUE',
-      [currentQuestionId]
-    );
-    if (byIdResult.rows.length > 0) {
-      currentNode = byIdResult.rows[0];
-    } else {
-      // Try by code
-      const byCodeResult = await query(
-        'SELECT * FROM decision_tree_nodes WHERE code = $1 AND is_active = TRUE',
-        [currentQuestionId]
-      );
-      if (byCodeResult.rows.length > 0) {
-        currentNode = byCodeResult.rows[0];
-      }
+    if (!session.current_node_code || currentQuestionId !== session.current_node_code) {
+      return res.status(409).json({ error: 'Question does not match the current questionnaire step' });
     }
 
+    const nodeResult = await query(
+      'SELECT * FROM decision_tree_nodes WHERE code = $1 AND is_active = TRUE',
+      [session.current_node_code]
+    );
+    const currentNode = nodeResult.rows[0];
+
     if (!currentNode) {
-      return res.json({ completed: true, sessionId });
+      return res.status(409).json({ error: 'Current questionnaire step is unavailable' });
     }
 
     // Validate answer against allowed options (SEC4)
@@ -99,10 +87,10 @@ const getNextQuestion = async (req, res, next) => {
     if (currentNode.question_type === 'multiple_choice') {
       const answers = Array.isArray(answer) ? answer : [answer];
       const invalid = answers.filter(a => !validOptions.includes(a));
-      if (invalid.length > 0) {
+      if (answers.some(a => typeof a !== 'string') || invalid.length > 0) {
         return res.status(400).json({ error: `Invalid answer(s): ${invalid.join(', ')}` });
       }
-    } else if (typeof answer === 'string' && !validOptions.includes(answer)) {
+    } else if (typeof answer !== 'string' || !validOptions.includes(answer)) {
       return res.status(400).json({ error: `Invalid answer: ${answer}. Valid options: ${validOptions.join(', ')}` });
     }
 
@@ -128,26 +116,6 @@ const getNextQuestion = async (req, res, next) => {
       nextNodeCode = nextNodeLogic[answer];
     } else if (nextNodeLogic['*']) {
       nextNodeCode = nextNodeLogic['*'];
-    }
-
-    // If no next node from static logic, try AI engine for adaptive selection
-    if (!nextNodeCode) {
-      try {
-        const sessionResult = await query(
-          'SELECT responses FROM questionnaire_responses WHERE id = $1 AND patient_id = $2',
-          [sessionId, patientId]
-        );
-        const currentResponses = sessionResult.rows[0]?.responses || {};
-
-        const aiResponse = await axios.post(`${AI_ENGINE_URL}/next-question`, {
-          current_responses: currentResponses,
-          answered_questions: Object.keys(currentResponses)
-        }, { timeout: 10000 });
-
-        nextNodeCode = aiResponse.data?.next_question_code;
-      } catch (aiError) {
-        console.error('AI next-question error:', aiError.message);
-      }
     }
 
     // If still no next node, questionnaire is complete
@@ -203,18 +171,14 @@ const getNextQuestion = async (req, res, next) => {
       return res.json({ completed: true, sessionId, totalQuestions });
     }
 
-    // Estimate progress
     const sessionData = await query(
       'SELECT responses FROM questionnaire_responses WHERE id = $1',
       [sessionId]
     );
     const answeredCount = Object.keys(sessionData.rows[0]?.responses || {}).length;
-    const estimatedTotal = Math.max(answeredCount + 3, 8);
-    const progress = Math.min(95, Math.round((answeredCount / estimatedTotal) * 100));
 
     res.json({
       question: nextQuestion.rows[0],
-      progress,
       answeredCount,
       sessionId
     });

@@ -1,22 +1,23 @@
 /**
  * MediscanAI — Runtime seed script
- * Seeds demo doctor accounts with runtime-hashed passwords.
- * Passwords are generated randomly and printed once to stdout.
+ * Seeds one visibly synthetic local admin with a random password.
  *
- * Usage: node database/seed-demo.js
+ * Usage: after starting local PostgreSQL, run `node database/seed-demo.js`.
  */
-const { Pool } = require('pg');
-const bcrypt = require('bcryptjs');
+const { createRequire } = require('module');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const serverRequire = createRequire(path.resolve(__dirname, '../server/package.json'));
+const { Pool } = serverRequire('pg');
+const bcrypt = serverRequire('bcryptjs');
 
-require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+serverRequire('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT) || 5432,
+  port: parseInt(process.env.DB_PORT, 10) || 5432,
   database: process.env.DB_NAME || 'medical_diagnosis',
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres123',
@@ -24,61 +25,78 @@ const pool = new Pool({
 
 const generatePassword = () => crypto.randomBytes(8).toString('base64url').slice(0, 12);
 
-async function seedSchema() {
-  const schemaPath = path.resolve(__dirname, 'schema.sql');
-  const schema = fs.readFileSync(schemaPath, 'utf8');
-  await pool.query(schema);
-  console.log('✅ Schema created');
+async function ensureSyntheticColumn() {
+  await pool.query('ALTER TABLE doctors ADD COLUMN IF NOT EXISTS is_synthetic BOOLEAN NOT NULL DEFAULT FALSE');
+  console.log('Synthetic-account marker is ready');
 }
 
 async function seedQuestions() {
   const seedPath = path.resolve(__dirname, 'seed.sql');
   const seed = fs.readFileSync(seedPath, 'utf8');
   await pool.query(seed);
-  console.log('✅ Question bank seeded');
+  console.log('Question bank seeded');
 }
 
 async function seedDemoAccounts() {
-  const accounts = [
-    { name: 'Dr. Sarah Mitchell', email: 'sarah.mitchell@hospital.com', specialization: 'General Medicine', license: 'MED-2024-001', role: 'doctor' },
-    { name: 'Dr. James Rodriguez', email: 'james.rodriguez@hospital.com', specialization: 'Pulmonology', license: 'MED-2024-002', role: 'doctor' },
-    { name: 'Dr. Emily Chen', email: 'emily.chen@hospital.com', specialization: 'Cardiology', license: 'MED-2024-003', role: 'doctor' },
-    { name: 'Admin User', email: 'admin@hospital.com', specialization: 'Administration', license: 'ADM-2024-001', role: 'admin' },
-  ];
+  const account = {
+    name: 'Synthetic Local Admin',
+    email: 'demo-admin@local.invalid',
+    specialization: 'Demo administration',
+    role: 'admin',
+  };
 
-  console.log('\n🔑 Demo account credentials (save these — they are shown only once):\n');
-  console.log('─'.repeat(70));
+  await pool.query(`
+    UPDATE doctors
+    SET is_synthetic = TRUE, is_verified = FALSE, license_number = NULL
+    WHERE email IN (
+      'sarah.mitchell@hospital.com',
+      'james.rodriguez@hospital.com',
+      'emily.chen@hospital.com'
+    )
+  `);
 
-  for (const acct of accounts) {
-    const password = generatePassword();
-    const hash = await bcrypt.hash(password, 12);
-
-    await pool.query(
-      `INSERT INTO doctors (name, email, password_hash, specialization, license_number, role, is_verified)
-       VALUES ($1, $2, $3, $4, $5, $6, TRUE)
-       ON CONFLICT (email) DO NOTHING`,
-      [acct.name, acct.email, hash, acct.specialization, acct.license, acct.role]
-    );
-
-    console.log(`  ${acct.role.toUpperCase().padEnd(7)} ${acct.email.padEnd(35)} ${password}`);
+  const password = process.env.DEMO_ADMIN_PASSWORD || generatePassword();
+  if (process.env.DEMO_ADMIN_PASSWORD && password.length < 16) {
+    throw new Error('DEMO_ADMIN_PASSWORD must be at least 16 characters long');
   }
+  const hash = await bcrypt.hash(password, 12);
+  await pool.query(
+    `INSERT INTO doctors (name, email, password_hash, specialization, license_number, role, is_verified, is_synthetic)
+     VALUES ($1, $2, $3, $4, NULL, $5, TRUE, TRUE)
+     ON CONFLICT (email) DO UPDATE
+     SET name = EXCLUDED.name, password_hash = EXCLUDED.password_hash,
+         specialization = EXCLUDED.specialization, is_verified = TRUE, is_synthetic = TRUE`,
+    [account.name, account.email, hash, account.specialization, account.role]
+  );
 
-  console.log('─'.repeat(70));
-  console.log('\n⚠️  These passwords are not stored anywhere else. Save them now.\n');
+  console.log('\nSynthetic local admin credentials (save these; the password is shown only once):\n');
+  console.log('-'.repeat(70));
+  if (process.env.CI === 'true') {
+    console.log(`  ${account.role.toUpperCase().padEnd(7)} ${account.email.padEnd(35)} password supplied through the CI environment`);
+  } else {
+    console.log(`  ${account.role.toUpperCase().padEnd(7)} ${account.email.padEnd(35)} ${password}`);
+  }
+  console.log('-'.repeat(70));
+  if (process.env.CI !== 'true') {
+    console.log('\nThis password is not stored anywhere else. Save it now.\n');
+  }
 }
 
 async function main() {
   try {
-    console.log('🏥 MediscanAI — Seeding database...\n');
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Demo seeding is disabled in production');
+    }
+    console.log('MediscanAI: seeding local demo data...\n');
 
-    await seedSchema();
+    await ensureSyntheticColumn();
     await seedQuestions();
     await seedDemoAccounts();
 
-    console.log('✅ Database seeded successfully!\n');
+    console.log('Local demo data seeded successfully.\n');
   } catch (err) {
-    console.error('❌ Seed failed:', err.message);
-    process.exit(1);
+    console.error('Seed failed:', err.message);
+    process.exitCode = 1;
   } finally {
     await pool.end();
   }

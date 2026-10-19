@@ -18,45 +18,45 @@ export default function Home() {
   const clinicalSteps = [
     {
       index: '01',
-      title: 'Adaptive Clinical Intake',
-      description: 'Answer tailored clinical questions that branch dynamically according to your symptoms, avoiding redundant inquiries.',
-      benefit: 'Average consultation takes 3 to 4 minutes'
+      title: 'Guided Symptom Intake',
+      description: 'Answer a branching questionnaire about the symptoms you are experiencing.',
+      benefit: 'Questions follow your selected responses'
     },
     {
       index: '02',
-      title: 'Differential Evidence Mapping',
-      description: 'Symptoms are evaluated against structured clinical datasets (4,920 validated diagnostic cases across 41 conditions).',
-      benefit: 'Transparent weighting of contributing symptoms'
+      title: 'Experimental Model Estimate',
+      description: 'A research model compares reported symptoms with synthetic symptom profiles when the available evidence is sufficient.',
+      benefit: 'The dataset page describes the model inputs and limits'
     },
     {
       index: '03',
-      title: 'Physician Review Integration',
-      description: 'Licensed medical practitioners review assessments, annotate feedback, and calibrate ongoing clinical precision.',
-      benefit: 'Physician oversight built into the care cycle'
+      title: 'Human Review Workflow',
+      description: 'A clinician account can review a submitted case and record feedback.',
+      benefit: 'Review status is shown on the case'
     },
     {
       index: '04',
-      title: 'Dignified Health Summary',
-      description: 'Receive a structured, plain-language clinical summary with triage recommendations to share with your primary doctor.',
-      benefit: 'Clear care pathways: routine, in-person, or urgent'
+      title: 'Assessment Summary',
+      description: 'Review the recorded answers, safety flags, and any model estimate returned for the assessment.',
+      benefit: 'No estimate is shown when the service abstains'
     },
   ]
 
   const trustPrinciples = [
     {
       icon: <IconShield size={22} color="var(--clinical-teal)" />,
-      title: 'Data Confidentiality & AES-256',
-      desc: 'All health profiles and symptom inputs are encrypted at rest and in transit. Your personal health records are never monetized.'
+      title: 'Sensitive Field Encryption',
+      desc: 'Allergies and chronic conditions are application-level encrypted before database storage. Other records are not field-encrypted.'
     },
     {
       icon: <IconStethoscope size={22} color="var(--clinical-teal)" />,
-      title: 'Evidence-Based Transparency',
-      desc: 'No black-box predictions. Every finding explains contributing factors, potential differential diagnoses, and inherent clinical uncertainties.'
+      title: 'Research Model Limits',
+      desc: 'The symptom model has not been clinically validated. Model-backed feature explanations are currently unavailable.'
     },
     {
       icon: <IconCheckCircle size={22} color="var(--clinical-teal)" />,
-      title: 'Clinical Oversight by Design',
-      desc: 'The platform integrates doctor feedback loops to continuously review accuracy, prevent over-diagnosis, and ensure clinical sanity.'
+      title: 'Case Review Workflow',
+      desc: 'Submitted cases can be reviewed through the clinician interface. Clinician identities and qualifications are not independently verified by this prototype.'
     },
   ]
 
@@ -104,7 +104,7 @@ export default function Home() {
               </h1>
 
               <p className="text-editorial-lead mb-4">
-                MediscanAI transforms uncertain health symptoms into structured, evidence-oriented clinical assessments. Designed for patient peace of mind and verified through clinician review.
+                MediscanAI is a research prototype for guided symptom intake and experimental model estimates. It has not been clinically validated.
               </p>
 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.875rem', alignItems: 'center' }}>
@@ -120,7 +120,7 @@ export default function Home() {
               {/* Contextual Clinical Note */}
               <div style={{ marginTop: '2rem', display: 'flex', alignItems: 'center', gap: '0.625rem', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
                 <IconLock size={15} color="var(--clinical-sage)" />
-                <span>Private & encrypted. No registration required to preview medical datasets.</span>
+                <span>Assessment requires an account. Dataset information is available without signing in.</span>
               </div>
             </div>
           </div>
@@ -140,7 +140,7 @@ export default function Home() {
               <div className="eyebrow-clinical mb-1">Clinical Process</div>
               <h2 className="editorial-heading-lg mb-2">A measured, four-stage journey to clinical understanding.</h2>
               <p className="text-secondary" style={{ fontSize: '0.9375rem', lineHeight: 1.6 }}>
-                Unlike generic symptom checkers that present endless checklists, MediscanAI adapts to your specific presentation through decision trees and multi-dataset validation.
+                MediscanAI collects symptom responses, checks for configured safety warnings, and can return an experimental estimate when its evidence threshold is met. The model has not been clinically validated.
               </p>
             </div>
 
@@ -187,12 +187,9 @@ export default function Home() {
                   Calm, unhurried symptom evaluation.
                 </h3>
                 <p className="text-secondary mb-4" style={{ fontSize: '0.875rem', lineHeight: 1.6 }}>
-                  When health symptoms appear, uncertainty is overwhelming. MediscanAI provides a quiet, focused environment that listens to your condition, explains why each question is asked, and provides actionable steps.
+                  MediscanAI provides a guided way to record symptoms and review the resulting assessment summary. It is a research prototype and does not provide medical advice.
                 </p>
                 <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.625rem', marginBottom: '1.75rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                  <li style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ color: 'var(--clinical-teal)' }}>—</span> Clear distinction between self-care and medical urgency
-                  </li>
                   <li style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <span style={{ color: 'var(--clinical-teal)' }}>—</span> Plain-language explanations without medical jargon
                   </li>
@@ -214,17 +211,17 @@ export default function Home() {
                   A structured triage & feedback workspace.
                 </h3>
                 <p className="text-secondary mb-4" style={{ fontSize: '0.875rem', lineHeight: 1.6 }}>
-                  Clinicians can review patient-submitted assessments, inspect contributing symptom vectors, override or approve predictions, and contribute directly to model calibration.
+                  Accounts with clinician access can review submitted assessments and record a review decision. The prototype does not independently verify clinician credentials or use feedback to retrain its model.
                 </p>
                 <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.625rem', marginBottom: '1.75rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
                   <li style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <span style={{ color: 'var(--clinical-teal)' }}>—</span> Triage prioritization by clinical urgency
                   </li>
                   <li style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ color: 'var(--clinical-teal)' }}>—</span> Full feature attribution and symptom audit trails
+                    <span style={{ color: 'var(--clinical-teal)' }}>—</span> Submitted symptom responses and assessment details
                   </li>
                   <li style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ color: 'var(--clinical-teal)' }}>—</span> Direct feedback loop for continuous model calibration
+                    <span style={{ color: 'var(--clinical-teal)' }}>—</span> Review decisions recorded for the case
                   </li>
                 </ul>
                 <div style={{ marginTop: 'auto' }}>
@@ -244,7 +241,7 @@ export default function Home() {
               <div className="eyebrow-clinical mb-1">Integrity & Governance</div>
               <h2 className="editorial-heading-lg mb-2">Built upon clinical restraint and patient safety.</h2>
               <p className="text-secondary" style={{ fontSize: '0.9375rem', lineHeight: 1.6 }}>
-                Healthcare software carries a psychological and physical responsibility. We do not inflate confidence scores, replace physicians, or sell your health disclosures.
+                This research prototype is not clinically validated and does not replace medical care. Use the emergency guidance for warning signs and contact a qualified professional for health concerns.
               </p>
             </div>
 
@@ -279,11 +276,11 @@ export default function Home() {
           </div>
 
           <p className="text-caption mb-2">
-            Clinical decision-support and symptom triage. Operating with AES-256 data protection.
+            Research prototype for symptom intake and experimental model estimates.
           </p>
 
           <p className="text-caption" style={{ maxWidth: '680px', margin: '0.5rem auto 0', fontSize: '0.75rem' }}>
-            Notice: MediscanAI provides informational health assessments based on clinical algorithms and validated medical datasets. It does not replace clinical consultation with a qualified medical professional. Always consult your doctor for diagnosis and treatment.
+            Notice: MediscanAI is not clinically validated and does not provide a diagnosis. Seek advice from a qualified medical professional for diagnosis or treatment.
           </p>
         </div>
       </footer>

@@ -1,66 +1,63 @@
-"""
-Unit tests for AI Engine components:
-- Rule-based & feature mapping logic
-- Adaptive decision tree question selection
-- XAI explainer reasoning & preventive tips
-"""
+"""Contract tests for AI engine components that do not make clinical claims."""
 
 import unittest
-from config import Config
+
 from models.classifier import MedicalClassifier
-from models.decision_tree import AdaptiveDecisionTree
 from models.explainer import DiagnosisExplainer
 
+
 class TestAIEngine(unittest.TestCase):
-    def setUp(self):
-        self.classifier = MedicalClassifier()
-        self.decision_tree = AdaptiveDecisionTree()
-        self.explainer = DiagnosisExplainer()
+    @classmethod
+    def setUpClass(cls):
+        cls.classifier = MedicalClassifier()
 
-    def test_classifier_prediction_output(self):
-        patient = {'age': 32, 'gender': 'female', 'weight': 65, 'height': 168}
+    def test_classifier_abstains_without_mapped_symptoms(self):
+        result = self.classifier.predict(
+            {'age': 32, 'gender': 'female'},
+            {'unrecognized_question_code': 'yes'}
+        )
+        self.assertEqual(result['status'], 'insufficient_evidence')
+        self.assertEqual(result['conditions'], [])
+        self.assertEqual(result['probability_vector'], {})
+        self.assertTrue(result['missing_evidence_hints'])
+
+    def test_classifier_maps_symptoms_and_returns_raw_probability_vector(self):
         symptoms = {
-            'q0000000-0000-0000-0000-000000000001': 'fever_flu',
-            'q0000000-0000-0000-0000-000000000002': 'high',
-            'q0000000-0000-0000-0000-000000000004': 'dry',
-            'q0000000-0000-0000-0000-000000000005': ['body_ache', 'fatigue', 'chills']
+            'high_fever': 1,
+            'cough': 1,
+            'fatigue': 1,
         }
-        predictions = self.classifier.predict(patient, symptoms)
-        self.assertTrue(len(predictions) > 0)
-        self.assertIn('condition', predictions[0])
-        self.assertIn('confidence', predictions[0])
-        self.assertGreater(predictions[0]['confidence'], 0)
+        result = self.classifier.predict({}, symptoms)
+        self.assertIn(result['status'], {'ok', 'low_confidence'})
+        self.assertTrue(result['conditions'])
+        self.assertIn('condition', result['conditions'][0])
+        self.assertGreaterEqual(result['conditions'][0]['confidence'], 0)
+        self.assertLessEqual(result['conditions'][0]['confidence'], 1)
+        self.assertAlmostEqual(sum(result['probability_vector'].values()), 1.0, places=3)
 
-    def test_adaptive_decision_tree_next_question(self):
-        current_responses = {
-            'q0000000-0000-0000-0000-000000000001': 'fever_flu'
-        }
-        answered = ['q0000000-0000-0000-0000-000000000001']
-        next_q = self.decision_tree.get_next_question(current_responses, answered)
-        self.assertIsNotNone(next_q)
-        self.assertIn('id', next_q)
-        self.assertNotIn(next_q['id'], answered)
+    def test_list_and_direct_flag_inputs_map_to_the_same_features(self):
+        list_vector, list_positive = self.classifier._symptoms_to_features(
+            {}, ['high_fever', 'cough']
+        )
+        dict_vector, dict_positive = self.classifier._symptoms_to_features(
+            {}, {'high_fever': 1, 'cough': 1}
+        )
+        self.assertEqual(list_vector, dict_vector)
+        self.assertEqual(set(list_positive), set(dict_positive))
 
-    def test_explainer_generates_reasoning_and_tips(self):
-        patient = {'age': 40, 'gender': 'male'}
-        symptoms = {
-            'q0000000-0000-0000-0000-000000000002': 'high',
-            'q0000000-0000-0000-0000-000000000004': 'productive',
-            'q0000000-0000-0000-0000-000000000005': ['fatigue', 'chills']
-        }
-        predictions = [
-            {'condition': 'flu', 'confidence': 0.82},
-            {'condition': 'pneumonia', 'confidence': 0.12},
-            {'condition': 'common_cold', 'confidence': 0.06}
-        ]
-        explanation = self.explainer.explain(patient, symptoms, predictions)
-        self.assertIn('summary', explanation)
-        self.assertIn('feature_contributions', explanation)
-        self.assertIn('reasoning', explanation)
+    def test_explainer_reports_unavailable_attribution_without_inventing_tips(self):
+        explainer = DiagnosisExplainer()
+        result = explainer.explain({}, {}, {'explanation': 'Model summary'})
+        self.assertEqual(result['summary'], 'Model summary')
+        self.assertEqual(result['explanation_status'], 'unavailable')
+        self.assertEqual(result['feature_contributions'], {})
+        self.assertEqual(result['precautions'], [])
+        self.assertEqual(result['reasoning'], [])
 
-        tips = self.explainer.get_preventive_tips([{'condition_key': 'flu'}])
-        self.assertTrue(len(tips) > 0)
-        self.assertIsInstance(tips[0], str)
+    def test_model_construction_never_trains_implicitly(self):
+        classifier = MedicalClassifier(load_model=False)
+        self.assertFalse(classifier.is_loaded)
+
 
 if __name__ == '__main__':
     unittest.main()

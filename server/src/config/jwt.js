@@ -18,6 +18,11 @@ const getRefreshSecret = () => {
   return secret || 'dev_refresh_secret_for_local_development_only_minimum_32_characters';
 };
 
+const validateJwtSecrets = () => {
+  getAccessSecret();
+  getRefreshSecret();
+};
+
 const ACCESS_EXPIRY = process.env.JWT_ACCESS_EXPIRY || '15m';
 const REFRESH_EXPIRY = process.env.JWT_REFRESH_EXPIRY || '7d';
 
@@ -72,5 +77,6 @@ module.exports = {
   generateRefreshToken,
   verifyAccessToken,
   verifyRefreshToken,
-  generateTokenPair
+  generateTokenPair,
+  validateJwtSecrets
 };

@@ -3,7 +3,7 @@ const axios = require('axios');
 const { assessTriage } = require('../utils/triage');
 const { broadcastCaseEvent } = require('../realtime');
 
-const AI_ENGINE_URL = process.env.AI_ENGINE_URL || 'http://localhost:5000';
+const { AI_ENGINE_URL } = require('../config/ai-engine');
 const AI_API_KEY = process.env.AI_API_KEY;
 
 /**
@@ -19,18 +19,6 @@ const createDiagnosis = async (req, res, next) => {
       return res.status(400).json({
         error: 'Questionnaire ID is required for clinical assessment',
         code: 'QUESTIONNAIRE_REQUIRED'
-      });
-    }
-
-    // Check if diagnosis already exists for this questionnaire session
-    const existingDiag = await query(
-      'SELECT * FROM diagnoses WHERE questionnaire_id = $1',
-      [questionnaire_id]
-    );
-    if (existingDiag.rows.length > 0) {
-      return res.status(200).json({
-        diagnosis: existingDiag.rows[0],
-        message: 'Returning existing diagnosis for this session'
       });
     }
 
@@ -67,14 +55,36 @@ const createDiagnosis = async (req, res, next) => {
       });
     }
 
+    // Only look up an existing result after proving the caller owns the session.
+    const existingDiag = await query(
+      'SELECT * FROM diagnoses WHERE questionnaire_id = $1 AND patient_id = $2',
+      [questionnaire_id, patientId]
+    );
+    if (existingDiag.rows.length > 0) {
+      return res.status(200).json({
+        diagnosis: existingDiag.rows[0],
+        message: 'Returning existing diagnosis for this session'
+      });
+    }
+
     const responses = questionnaire.responses || {};
 
     // 1. Deterministic red-flag safety triage before any ML runs (S4, S5)
-    const triage = assessTriage(responses);
+    let triage = assessTriage(responses);
 
     // 2. Call AI Engine
     let aiResult;
-    try {
+    if (triage.urgency_level === 'emergency' || triage.urgency_level === 'urgent') {
+      aiResult = {
+        status: 'red_flag_escalation',
+        conditions: [],
+        probability_vector: {},
+        explanation: 'A questionnaire response triggered an urgent safety rule. Automated condition estimates were withheld; seek in-person care as directed.',
+        feature_contributions: {},
+        precautions: [],
+        missing_evidence_hints: []
+      };
+    } else try {
       const headers = { 'Content-Type': 'application/json' };
       if (AI_API_KEY) {
         headers['X-API-Key'] = AI_API_KEY;
@@ -102,6 +112,15 @@ const createDiagnosis = async (req, res, next) => {
         error: 'The clinical analysis service is temporarily unavailable. Your responses have been saved.',
         code: 'AI_ENGINE_UNAVAILABLE'
       });
+    }
+
+    // Apply the second triage stage using returned model probabilities.
+    if (Array.isArray(aiResult.conditions) && aiResult.conditions.length > 0) {
+      const modelPredictions = aiResult.conditions.map(condition => ({
+        condition: condition.condition_key || condition.name,
+        probability: condition.confidence
+      }));
+      triage = assessTriage(responses, modelPredictions);
     }
 
     // 3. Handle model response (support ok, low_confidence, insufficient_evidence)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import {
   IconActivity,
@@ -15,12 +15,7 @@ export default function AnalyticsPage() {
   const [analytics, setAnalytics] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    if (authLoading) return
-    loadAnalytics()
-  }, [authLoading, authFetch])
-
-  const loadAnalytics = async () => {
+  const loadAnalytics = useCallback(async () => {
     try {
       const res = await authFetch('/doctors/analytics')
       const data = await res.json()
@@ -30,7 +25,12 @@ export default function AnalyticsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [authFetch])
+
+  useEffect(() => {
+    if (authLoading) return
+    Promise.resolve().then(loadAnalytics)
+  }, [authLoading, loadAnalytics])
 
   if (loading) {
     return (
@@ -44,7 +44,7 @@ export default function AnalyticsPage() {
   }
 
   const conditionDist = analytics?.conditionDistribution || []
-  const accuracyTrends = analytics?.accuracyTrends || []
+  const accuracyTrends = analytics?.agreementTrends || []
   const dailySubmissions = analytics?.dailySubmissions || []
   const feedbackBreakdown = analytics?.feedbackBreakdown || []
 
@@ -56,12 +56,12 @@ export default function AnalyticsPage() {
     <div className="animate-calm-fade">
       {/* Header */}
       <div style={{ marginBottom: '2rem' }}>
-        <div className="eyebrow-clinical mb-1">Clinical Epidemiology &amp; Accuracy</div>
+        <div className="eyebrow-clinical mb-1">Recorded Service Activity</div>
         <h1 className="editorial-heading-lg" style={{ fontSize: '1.875rem' }}>
-          Clinical Intelligence &amp; Model Agreement
+          Review Activity
         </h1>
         <p className="text-secondary mt-1" style={{ fontSize: '0.9375rem' }}>
-          Epidemiological distribution of evaluated conditions, physician agreement rates, and intake volume.
+          Counts from assessments and clinician feedback recorded in this system.
         </p>
       </div>
 
@@ -75,13 +75,13 @@ export default function AnalyticsPage() {
           return (
             <div key={i} className="clinical-card">
               <div className="text-caption" style={{ textTransform: 'capitalize', fontWeight: 600 }}>
-                {isApprove ? 'Physician Approvals' : fb.action === 'correct' ? 'Clinical Corrections' : 'Overrides'}
+                {isApprove ? 'Clinician Approvals' : fb.action === 'correct' ? 'Clinician Corrections' : 'Overrides'}
               </div>
               <div style={{ fontFamily: 'var(--font-editorial)', fontSize: '2rem', fontWeight: 500, color: isApprove ? 'var(--clinical-teal)' : 'var(--text-primary)', marginTop: '0.25rem' }}>
                 {count}
               </div>
               <div className="text-caption mt-1">
-                {pct}% of verified clinical evaluations
+                {pct}% of recorded review actions
               </div>
             </div>
           )
@@ -89,12 +89,12 @@ export default function AnalyticsPage() {
 
         {feedbackBreakdown.length === 0 && (
           <div className="clinical-card">
-            <div className="text-caption" style={{ fontWeight: 600 }}>Physician Feedback Log</div>
+            <div className="text-caption" style={{ fontWeight: 600 }}>Clinician Feedback</div>
             <div style={{ fontFamily: 'var(--font-editorial)', fontSize: '2rem', fontWeight: 500, color: 'var(--text-muted)', marginTop: '0.25rem' }}>
               0
             </div>
             <div className="text-caption mt-1">
-              Awaiting initial physician evaluations in queue.
+              No clinician feedback has been recorded yet.
             </div>
           </div>
         )}
@@ -106,7 +106,7 @@ export default function AnalyticsPage() {
           Top Pathological Conditions Evaluated
         </h2>
         <p className="text-caption mb-4">
-          Frequency of synthesized primary conditions across patient symptom intake consultations.
+          Frequency of model estimates recorded in submitted assessments.
         </p>
 
         {conditionDist.length === 0 ? (
@@ -183,15 +183,15 @@ export default function AnalyticsPage() {
         )}
       </div>
 
-      {/* Longitudinal Accuracy & Agreement Trends */}
+      {/* Review Outcomes Over Time */}
       {accuracyTrends.length > 0 && (
         <div className="clinical-card mb-6" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-subtle)' }}>
             <h2 className="heading-sm">
-              Longitudinal Physician Agreement Rate
+              Review Outcomes by Month
             </h2>
             <p className="text-caption mt-0.5">
-              Monthly calibration measuring doctor approvals versus diagnostic overrides.
+              Monthly share of reviewed cases approved without correction.
             </p>
           </div>
 
@@ -199,10 +199,10 @@ export default function AnalyticsPage() {
             <thead>
               <tr>
                 <th>Evaluation Month</th>
-                <th>Approved Diagnoses</th>
-                <th>Physician Corrections</th>
+                <th>Approved Cases</th>
+                <th>Clinician Corrections</th>
                 <th>Total Reviewed</th>
-                <th>Clinical Agreement Rate</th>
+                <th>Approval Share</th>
               </tr>
             </thead>
             <tbody>

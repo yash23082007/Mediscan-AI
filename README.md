@@ -1,18 +1,17 @@
 # MediscanAI
 
-## Explainable AI for safer first healthcare decisions
+## Guided symptom intake research prototype
 
-MediscanAI is a clinical decision-support prototype that helps a patient move from **“What could these symptoms mean?”** to **“What should I do next?”**
+MediscanAI is an early-stage research prototype for guided symptom intake and experimental model estimates. It has not been clinically validated.
 
 It combines:
 
-- an adaptive symptom questionnaire;
-- a machine-learning model that returns a top-three differential;
-- human-readable reasoning and symptom contributions;
-- clear safety guidance;
-- and a doctor review workflow where an AI result can be approved, corrected, or overridden.
+- a branching symptom questionnaire;
+- a machine-learning model that may return up to three estimates when its minimum evidence gate is met;
+- deterministic questionnaire red-flag rules;
+- and a clinician account workflow to approve, correct, or override a submitted result.
 
-The important part is not just the prediction. The important part is what happens around the prediction: the patient sees context, the clinician sees the case, and the system records the review.
+The model estimate is not a diagnosis. Model-backed symptom explanations and cited condition-specific care guidance are currently unavailable.
 
 > **Medical disclaimer:** MediscanAI is an academic prototype for triage assistance and demonstration. It is not a diagnosis, treatment service, emergency service, or replacement for a qualified healthcare professional. It has not been clinically or regulatorily certified.
 
@@ -24,8 +23,8 @@ The important part is not just the prediction. The important part is what happen
 |---|---|
 | **Team** | Yash Vijay — Solo |
 | **College / Incubator** | JECRC Foundation, Jaipur |
-| **Project** | MediscanAI: Explainable AI Clinical Decision Support and Disease Detection System |
-| **Focus** | Healthcare AI, explainability, privacy, and physician-in-the-loop design |
+| **Project** | MediscanAI: Symptom Intake Research Prototype |
+| **Focus** | Symptom intake, experimental classification, and clinician review workflow |
 
 ---
 
@@ -42,25 +41,25 @@ Healthcare is a high-stakes setting. A model should not simply output a disease 
 
 ## My solution
 
-MediscanAI is built around a simple four-step loop:
+MediscanAI currently provides a four-step workflow:
 
-### 1. Adapt
+### 1. Ask
 
-The questionnaire chooses relevant follow-up questions from the patient's previous answers instead of showing every question at once.
+The questionnaire follows a fixed branching path based on the patient's answers. It does not select questions using expected information gain.
 
-### 2. Explain
+### 2. Estimate
 
-The AI engine returns up to three likely conditions, confidence scores, a clinical overview, precautions, and symptom-level feature contributions.
+The AI engine may return up to three model estimates. It abstains when fewer than two symptoms are detected. The percentages are experimental model estimates, not clinical probabilities.
 
 ### 3. Protect
 
-The system provides explicit clinical disclaimers and deterministic red-flag guidance. It does not present the output as certainty or treatment advice.
+The system provides a disclaimer and deterministic red-flag guidance. The red-flag rules have not been clinically validated.
 
 ### 4. Review
 
-The case moves into a protected doctor portal. A doctor can review the symptoms and model reasoning, then approve, correct, or override the result. That decision is recorded for traceability.
+The case moves into a role-protected clinician portal. A clinician account can review the symptoms and approve, correct, or override the result. Account holders' qualifications are not independently verified by this prototype.
 
-This makes MediscanAI a workflow, not just a machine-learning demo.
+This prototype combines a branching intake, model estimate, and case review workflow.
 
 ---
 
@@ -91,9 +90,7 @@ flowchart TB
     end
 
     subgraph AI["Python / Flask AI engine :5000"]
-        Questions["Adaptive question selection"]
         Model["Random Forest classifier"]
-        Explain["Feature contributions + clinical knowledge"]
     end
 
     Patient --> PatientUI
@@ -104,9 +101,6 @@ flowchart TB
     Validation --> Workflow
     Workflow --> Data
     Workflow -->|"Prediction request"| Model
-    Questions --> Workflow
-    Model --> Explain
-    Explain --> Workflow
     Workflow --> Feedback
     Audit --> Feedback
 ```
@@ -124,7 +118,7 @@ The Flask service converts responses into a 132-feature symptom vector
         ↓
 Random Forest ranks the possible conditions
         ↓
-The explanation layer adds symptom contributions, descriptions, and precautions
+The model returns estimates or abstains when too little evidence is present. Model-backed feature explanations are currently unavailable.
         ↓
 The API stores the result and creates a reviewable doctor submission
         ↓
@@ -149,13 +143,13 @@ The AI service is a Python Flask microservice using scikit-learn.
 | Item | Implementation |
 |---|---|
 | Classifier | `RandomForestClassifier` |
-| Trees | 120 |
-| Maximum depth | 25 |
-| Training records | 4,920 |
-| Symptom features | 132 |
-| Disease classes | 41 |
-| Validation | Stratified 85/15 split with `random_state=42` |
-| Additional test data | 42 bundled test cases |
+| Trees | 80 |
+| Maximum depth | 20 |
+| Training rows | 4,920 |
+| Unique training profiles | 304 |
+| Symptom features | Read from the loaded model artifact |
+| Disease classes | Read from the loaded model artifact |
+| Clinical validation | None |
 | Model storage | Joblib artifacts |
 | Output | Ranked top-three conditions and confidence scores |
 
@@ -169,15 +163,13 @@ metrics.json
 scaler.joblib
 ```
 
-### Explainability, accurately described
+### Model explanations
 
-The current system uses **severity-weighted symptom feature contributions** and a clinical knowledge base to generate its explanation. It does not claim that the current response is a validated SHAP explanation. SHAP is present in the Python dependencies for future or extended explainability work, but the implemented output should be understood as feature contribution analysis.
-
-This distinction matters. The project communicates what is implemented instead of overstating the model.
+Model-backed feature attributions are currently disabled. The application does not claim SHAP explanations or display hand-authored symptom weights as model reasoning.
 
 ### Dataset limitations
 
-The bundled datasets are open clinical and educational datasets used for a prototype. Their accuracy does not establish clinical validity, fairness across populations, or regulatory approval. Confidence scores are model scores, not clinical certainty.
+The training corpus contains synthetic symptom profiles, not patient diagnostic records. Duplicate profiles make naive performance measures unreliable. The model has not been clinically validated; its estimates do not establish clinical validity, fairness, or regulatory approval.
 
 ---
 
@@ -186,17 +178,17 @@ The bundled datasets are open clinical and educational datasets used for a proto
 ### Patient side
 
 - Register and sign in securely
-- Start an adaptive assessment
+- Start a guided branching assessment
 - Answer focused symptom questions
-- View the preliminary top-three result
-- Read the explanation, condition overview, and precautions
+- View any returned model estimates
+- See the model estimate, if returned, or an explicit no-estimate state
 - View diagnosis history and health reports
 
 ### Doctor side
 
 - Open the protected submissions queue
 - Filter and inspect patient cases
-- Review symptoms and model evidence
+- Review symptoms and the model estimate, if present
 - Approve, correct, or override the result
 - Add clinical notes
 - View review and triage analytics
@@ -205,7 +197,7 @@ The bundled datasets are open clinical and educational datasets used for a proto
 
 - Passwords are hashed with bcrypt.
 - JWT sessions use HTTP-only cookies.
-- Selected sensitive fields are encrypted with AES-256-GCM before storage.
+- Allergies and chronic conditions are encrypted with AES-256-GCM before storage; other records are not field-encrypted.
 - Role-based access separates patient and doctor capabilities.
 - Zod validates selected API inputs.
 - Helmet, CORS restrictions, and rate limiting protect the API surface.
@@ -223,7 +215,7 @@ This is a prototype. Production use would require clinical validation, privacy r
 | Frontend | Next.js 16, React 19, App Router |
 | Backend | Node.js, Express, Axios, Zod |
 | AI engine | Python, Flask, scikit-learn, pandas, NumPy, Joblib |
-| Database | PostgreSQL 16 |
+| Database | PostgreSQL 17 |
 | Security | bcryptjs, JWT, AES-256-GCM, Helmet, CORS, rate limiting |
 | Testing | Jest and Python `unittest` |
 | Deployment | Docker Compose, Render, Vercel, Gunicorn |
@@ -256,7 +248,7 @@ This is a prototype. Production use would require clinical validation, privacy r
 - Node.js 18+
 - npm
 - Python 3.10+
-- PostgreSQL 16, or Docker Desktop
+- PostgreSQL 17, or Docker Desktop
 
 ### Recommended: Docker Compose
 
@@ -313,6 +305,10 @@ Then open http://localhost:3000.
 
 Never commit `.env`, credentials, tokens, or real patient information.
 
+### Deployment configuration
+
+The Render Blueprint provisions PostgreSQL, the API, and a private AI service. The API initializes the schema and questionnaire seed under a PostgreSQL advisory lock on first startup. The AI runtime is reachable only through Render's private network; the API key is generated once and shared through a service reference. The frontend uses a same-origin `/api/*` proxy so refresh cookies remain `HttpOnly` and `SameSite=Strict`. Set `API_ORIGIN` in the Vercel project to the deployed API's HTTPS origin and set `CORS_ORIGIN` in Render to the deployed frontend origin. The smallest Render AI and database plans are billable; review the current plan and storage costs before creating the Blueprint. The API readiness check remains unhealthy until both PostgreSQL and the model service respond.
+
 ---
 
 ## Verification
@@ -322,21 +318,27 @@ The project was verified with:
 ```powershell
 # Backend tests: 9 tests passed
 Set-Location server
-npm test -- --runInBand
+npm test
 
-# AI engine tests: 3 tests passed
+# AI engine unit and HTTP contract tests: 11 tests passed
 Set-Location ..\ai-engine
-python test_logic.py
+python -B -m unittest discover -s . -p 'test_*.py'
 
-# Frontend production build
+# Frontend lint and production build
 Set-Location ..\client
+npm run lint
 npm run build
+
+# Real-stack browser acceptance (requires running Postgres, API, AI, and Next.js)
+npx playwright install chromium
+$env:E2E_ADMIN_PASSWORD = '<one-time password printed by npm run seed:demo>'
+npm run test:e2e
 ```
 
-The repository also includes browser evidence for:
+The repository includes UI screenshots as visual references. The Playwright acceptance flow exercises registration, assessment, diagnosis persistence, review, and patient status refresh against PostgreSQL:
 
 - landing page, registration, and login;
-- adaptive questionnaire;
+- guided branching questionnaire;
 - diagnosis and health report;
 - doctor overview and submissions;
 - doctor analytics; and
@@ -379,4 +381,4 @@ The current prototype establishes the workflow. The next engineering priorities 
 
 ## Final statement
 
-MediscanAI is built around a responsible idea: in healthcare, a useful AI system should be **adaptive enough to reduce friction, explainable enough to be questioned, and connected to a human workflow before action is taken**.
+MediscanAI is a research prototype for symptom intake and experimental model estimates. It has not been clinically validated, and model-backed feature explanations are currently unavailable.

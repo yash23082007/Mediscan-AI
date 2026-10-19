@@ -7,6 +7,7 @@ and Expected Information Gain (EIG) adaptive questioning.
 import os
 import hmac
 import numpy as np
+import pandas as pd
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -34,6 +35,8 @@ explainer = DiagnosisExplainer()
 eig_selector = EIGSelector(classifier)
 
 AI_API_KEY = os.getenv('AI_API_KEY')
+if (os.getenv('APP_ENV') or os.getenv('NODE_ENV') or os.getenv('FLASK_ENV')) == 'production' and not AI_API_KEY:
+    raise RuntimeError('AI_API_KEY must be configured in production')
 
 def verify_api_key():
     """Verify internal service API key in constant time (SEC11)."""
@@ -215,44 +218,52 @@ def next_question():
 @app.route('/datasets/info', methods=['GET'])
 def datasets_info():
     """
-    Return authentic metadata about the clinical symptom training dataset (F9, F10).
+    Return metadata computed from the loaded symptom-profile training artifacts.
     """
+    try:
+        train_df = pd.read_csv(Config.TRAIN_DATASET)
+        test_df = pd.read_csv(Config.TEST_DATASET)
+    except (OSError, ValueError, pd.errors.ParserError) as exc:
+        app.logger.exception('Unable to read evaluation data files')
+        return jsonify({'error': 'Dataset evaluation metadata is unavailable'}), 503
+    train_df = train_df.drop(columns=[c for c in train_df.columns if 'Unnamed' in c], errors='ignore')
+    test_df = test_df.drop(columns=[c for c in test_df.columns if 'Unnamed' in c], errors='ignore')
+    shared_columns = [column for column in train_df.columns if column in test_df.columns]
+    training_rows = set(map(
+        tuple,
+        train_df[shared_columns].fillna('').astype(str).values.tolist()
+    ))
+    overlap_count = sum(
+        tuple(row) in training_rows
+        for row in test_df[shared_columns].fillna('').astype(str).values.tolist()
+    )
+
     return jsonify({
         'status': 'active',
         'metrics': classifier.metrics,
+        'evaluation': {
+            'status': 'not_independent',
+            'test_rows': len(test_df),
+            'exact_training_overlaps': overlap_count,
+            'performance_metrics_published': False
+        },
         'symptoms_count': len(classifier.feature_names),
-        'conditions_count': len(classifier.label_encoder.classes_) if classifier.label_encoder else 41,
+        'conditions_count': len(classifier.label_encoder.classes_) if classifier.label_encoder else 0,
         'datasets': [
             {
+                'id': 'training',
                 'name': 'Disease-Symptom Training Profiles',
                 'source': 'Kaggle (Disease Prediction from Symptoms)',
                 'url': 'https://www.kaggle.com/datasets/itachi9604/disease-symptom-description-dataset',
-                'records': 4920,
-                'unique_profiles': 304,
-                'features': 132,
-                'target_classes': 41,
+                'records': classifier.metrics.get('num_samples', 0),
+                'unique_profiles': classifier.metrics.get('unique_profiles', 0),
+                'features': len(classifier.feature_names),
+                'target_classes': len(classifier.label_encoder.classes_) if classifier.label_encoder else 0,
                 'type': 'Synthetic symptom combination profiles based on clinical presentation templates'
-            },
-            {
-                'name': 'Medical Condition Pathology Descriptions',
-                'source': 'Kaggle Medical Knowledge Base',
-                'records': 41,
-                'type': 'Condition etiology and pathology overviews'
-            },
-            {
-                'name': 'Clinical Precautions & Care Guidelines',
-                'source': 'Public Health Guidance Knowledge Base',
-                'records': 41,
-                'precautions_per_disease': 4,
-                'type': 'Non-pharmacological precautions and consultation advice'
-            },
-            {
-                'name': 'Symptom Clinical Severity Matrix',
-                'source': 'Emergency Medicine Triage Weights',
-                'records': 132,
-                'scale': '1 to 7',
-                'type': 'Relative symptom severity weights'
             }
+        ]
+    })
+
 # ============================================
 # VERNACULAR SYMPTOM EXTRACTION (NLU §5.6)
 # ============================================
