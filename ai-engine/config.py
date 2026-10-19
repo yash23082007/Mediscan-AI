@@ -1,40 +1,23 @@
 import os
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 class Config:
     FLASK_ENV = os.getenv('FLASK_ENV', 'development')
     FLASK_PORT = int(os.getenv('FLASK_PORT') or os.getenv('PORT') or 5000)
-    DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://postgres:postgres123@localhost:5432/medical_diagnosis')
-    MODEL_PATH = os.getenv('MODEL_PATH', './saved_models')
-    DATA_PATH = os.getenv('DATA_PATH', './data')
-    AI_API_KEY = os.getenv('AI_API_KEY', 'dev_ai_key')
+    MODEL_PATH = os.getenv('MODEL_PATH', os.path.join(BASE_DIR, 'saved_models'))
+    DATA_PATH = os.getenv('DATA_PATH', os.path.join(BASE_DIR, 'data'))
     
     # Model configuration
     MODEL_FILE = os.path.join(MODEL_PATH, 'classifier.joblib')
-    SCALER_FILE = os.path.join(MODEL_PATH, 'scaler.joblib')
     ENCODER_FILE = os.path.join(MODEL_PATH, 'encoder.joblib')
     
-    # Authentic Internet Dataset files
+    # Open-source symptom-combination datasets
     TRAIN_DATASET = os.path.join(DATA_PATH, 'training_data.csv')
     TEST_DATASET = os.path.join(DATA_PATH, 'test_data.csv')
     DESCRIPTION_DATASET = os.path.join(DATA_PATH, 'symptom_Description.csv')
     PRECAUTION_DATASET = os.path.join(DATA_PATH, 'symptom_precaution.csv')
     SEVERITY_DATASET = os.path.join(DATA_PATH, 'symptom_severity.csv')
-    DIABETES_DATASET = os.path.join(DATA_PATH, 'pima_indians_diabetes.csv')
-    
-    # All 41 clinical conditions from open-source medical datasets
-    CONDITIONS = [
-        'Malaria', 'Dengue', 'Typhoid', 'Pneumonia', 'Common Cold',
-        'Bronchial Asthma', 'Tuberculosis', 'GERD', 'Gastroenteritis',
-        'Peptic ulcer diseae', 'Diabetes ', 'Hypertension ', 'Migraine',
-        'Cervical spondylosis', 'Paralysis (brain hemorrhage)', 'Jaundice',
-        'Chicken pox', 'hepatitis A', 'Hepatitis B', 'Hepatitis C',
-        'Hepatitis D', 'Hepatitis E', 'Alcoholic hepatitis', 'Chronic cholestasis',
-        'Dimorphic hemmorhoids(piles)', 'Heart attack', 'Varicose veins',
-        'Hypothyroidism', 'Hyperthyroidism', 'Hypoglycemia', 'Osteoarthristis',
-        'Arthritis', '(vertigo) Paroymsal  Positional Vertigo', 'Acne',
-        'Urinary tract infection', 'Psoriasis', 'Impetigo', 'Fungal infection',
-        'Allergy', 'Drug Reaction', 'AIDS'
-    ]
     
     # Clean, patient-friendly medical titles
     CONDITION_DISPLAY_NAMES = {

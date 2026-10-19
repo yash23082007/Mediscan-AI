@@ -108,6 +108,15 @@ export default function DatasetsPage() {
         </div>
       </div>
 
+      {liveInfo?.evaluation && (
+        <div className="clinical-panel-subtle mb-4" role="status" style={{ padding: '1.25rem 1.5rem' }}>
+          <strong>Evaluation limitation:</strong> the {liveInfo.evaluation.test_rows} test profiles include {liveInfo.evaluation.exact_training_overlaps} exact profiles also present in training data.
+          {liveInfo.evaluation.performance_metrics_published
+            ? ' Reported performance metrics should be interpreted with this overlap in mind.'
+            : ' The test set is not independent, so this service does not publish performance metrics.'}
+        </div>
+      )}
+
       {/* Service Connection Status */}
       <div className="clinical-card mb-4" style={{ padding: '1.25rem 1.75rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

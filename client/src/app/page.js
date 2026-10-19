@@ -140,7 +140,7 @@ export default function Home() {
               <div className="eyebrow-clinical mb-1">Clinical Process</div>
               <h2 className="editorial-heading-lg mb-2">A measured, four-stage journey to clinical understanding.</h2>
               <p className="text-secondary" style={{ fontSize: '0.9375rem', lineHeight: 1.6 }}>
-                Unlike generic symptom checkers that present endless checklists, MediscanAI adapts to your specific presentation through decision trees and multi-dataset validation.
+                MediscanAI collects symptom responses, checks for configured safety warnings, and can return an experimental estimate when its evidence threshold is met. The model has not been clinically validated.
               </p>
             </div>
 
@@ -187,12 +187,9 @@ export default function Home() {
                   Calm, unhurried symptom evaluation.
                 </h3>
                 <p className="text-secondary mb-4" style={{ fontSize: '0.875rem', lineHeight: 1.6 }}>
-                  When health symptoms appear, uncertainty is overwhelming. MediscanAI provides a quiet, focused environment that listens to your condition, explains why each question is asked, and provides actionable steps.
+                  MediscanAI provides a guided way to record symptoms and review the resulting assessment summary. It is a research prototype and does not provide medical advice.
                 </p>
                 <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.625rem', marginBottom: '1.75rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                  <li style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ color: 'var(--clinical-teal)' }}>—</span> Clear distinction between self-care and medical urgency
-                  </li>
                   <li style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <span style={{ color: 'var(--clinical-teal)' }}>—</span> Plain-language explanations without medical jargon
                   </li>
@@ -214,17 +211,17 @@ export default function Home() {
                   A structured triage & feedback workspace.
                 </h3>
                 <p className="text-secondary mb-4" style={{ fontSize: '0.875rem', lineHeight: 1.6 }}>
-                  Clinicians can review patient-submitted assessments, inspect contributing symptom vectors, override or approve predictions, and contribute directly to model calibration.
+                  Accounts with clinician access can review submitted assessments and record a review decision. The prototype does not independently verify clinician credentials or use feedback to retrain its model.
                 </p>
                 <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.625rem', marginBottom: '1.75rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
                   <li style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <span style={{ color: 'var(--clinical-teal)' }}>—</span> Triage prioritization by clinical urgency
                   </li>
                   <li style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ color: 'var(--clinical-teal)' }}>—</span> Full feature attribution and symptom audit trails
+                    <span style={{ color: 'var(--clinical-teal)' }}>—</span> Submitted symptom responses and assessment details
                   </li>
                   <li style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ color: 'var(--clinical-teal)' }}>—</span> Direct feedback loop for continuous model calibration
+                    <span style={{ color: 'var(--clinical-teal)' }}>—</span> Review decisions recorded for the case
                   </li>
                 </ul>
                 <div style={{ marginTop: 'auto' }}>

@@ -1,6 +1,6 @@
 """
 Medical Symptom Classifier
-Calibrated Random Forest trained on authentic open-source clinical symptom profiles
+Calibrated Random Forest trained on open-source symptom-combination profiles
 (132 symptoms, 41 conditions).
 
 Features:
@@ -16,57 +16,59 @@ import json
 import numpy as np
 import pandas as pd
 import joblib
+import sklearn
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import StratifiedKFold
 
 from config import Config
-from models.dataset_loader import MedicalDatasetKB
 
 
 class MedicalClassifier:
-    def __init__(self):
+    def __init__(self, load_model=True):
         self.model = None
         self.label_encoder = None
         self.feature_names = []
         self.is_loaded = False
-        self.kb = MedicalDatasetKB.get_instance()
         self.metrics = {}
         self.model_version = "v1.0.0"
 
-        # Try to load existing model
-        self._load_model()
-
-        # If no model found on disk, train on the clinical dataset
-        if not self.is_loaded:
-            print("[INFO] No pre-trained model found on disk. Training calibrated model...", flush=True)
-            self.train_initial_model()
+        if load_model:
+            self._load_model()
 
     def _load_model(self):
         """Load pre-trained calibrated model from disk."""
-        try:
-            if os.path.exists(Config.MODEL_FILE) and os.path.exists(Config.ENCODER_FILE):
-                self.model = joblib.load(Config.MODEL_FILE)
-                self.label_encoder = joblib.load(Config.ENCODER_FILE)
+        feature_file = os.path.join(Config.MODEL_PATH, 'feature_names.json')
+        required_files = (Config.MODEL_FILE, Config.ENCODER_FILE, feature_file)
+        missing_files = [path for path in required_files if not os.path.isfile(path)]
+        if missing_files:
+            raise FileNotFoundError(
+                'Pre-trained AI artifacts are required; run `python train_model.py` offline. '
+                f'Missing: {", ".join(missing_files)}'
+            )
 
-                feature_file = os.path.join(Config.MODEL_PATH, 'feature_names.json')
-                if os.path.exists(feature_file):
-                    with open(feature_file, 'r') as f:
-                        self.feature_names = json.load(f)
-                else:
-                    self.feature_names = self.kb.symptoms
+        self.model = joblib.load(Config.MODEL_FILE)
+        self.label_encoder = joblib.load(Config.ENCODER_FILE)
+        with open(feature_file, 'r', encoding='utf-8') as f:
+            self.feature_names = json.load(f)
 
-                metrics_file = os.path.join(Config.MODEL_PATH, 'metrics.json')
-                if os.path.exists(metrics_file):
-                    with open(metrics_file, 'r') as f:
-                        self.metrics = json.load(f)
-
-                self.is_loaded = True
-                print(f"[INFO] MedicalClassifier loaded ({len(self.feature_names)} features, {len(self.label_encoder.classes_)} classes)", flush=True)
-        except Exception as e:
-            print(f"[WARN] Could not load model from disk: {e}", flush=True)
-            self.is_loaded = False
+        metrics_file = os.path.join(Config.MODEL_PATH, 'metrics.json')
+        if os.path.exists(metrics_file):
+            with open(metrics_file, 'r', encoding='utf-8') as f:
+                self.metrics = json.load(f)
+        artifact_sklearn = self.metrics.get('scikit_learn_version')
+        if artifact_sklearn and artifact_sklearn != sklearn.__version__:
+            raise RuntimeError(
+                f'Model artifacts require scikit-learn {artifact_sklearn}; '
+                f'installed version is {sklearn.__version__}. '
+                'Install the matching requirements or retrain offline.'
+            )
+        # Older artifacts recorded resubstitution accuracy, which is not a
+        # valid generalization metric and must not be exposed as model quality.
+        self.metrics.pop('train_accuracy', None)
+        self.is_loaded = True
+        print(f"[INFO] MedicalClassifier loaded ({len(self.feature_names)} features, {len(self.label_encoder.classes_)} classes)", flush=True)
 
     def train_initial_model(self):
         """
@@ -108,9 +110,6 @@ class MedicalClassifier:
         self.model = CalibratedClassifierCV(estimator=base_rf, method='isotonic', cv=cv, n_jobs=1)
         self.model.fit(X.values, y_encoded)
 
-        # Evaluate honest baseline metrics
-        train_score = float(self.model.score(X.values, y_encoded))
-
         # Save artifacts
         os.makedirs(Config.MODEL_PATH, exist_ok=True)
         joblib.dump(self.model, Config.MODEL_FILE)
@@ -120,11 +119,11 @@ class MedicalClassifier:
             json.dump(self.feature_names, f, indent=2)
 
         self.metrics = {
-            'train_accuracy': round(train_score, 4),
             'num_samples': len(df),
             'unique_profiles': int(df.drop_duplicates().shape[0]),
             'num_features': len(self.feature_names),
             'num_classes': len(self.label_encoder.classes_),
+            'scikit_learn_version': sklearn.__version__,
             'calibration': 'isotonic',
             'model_type': 'CalibratedClassifierCV(RandomForestClassifier)'
         }
@@ -133,7 +132,7 @@ class MedicalClassifier:
             json.dump(self.metrics, f, indent=2)
 
         self.is_loaded = True
-        print(f"[INFO] Calibrated model saved successfully (Accuracy: {self.metrics['train_accuracy']})", flush=True)
+        print('[INFO] Calibrated model saved. No clinical performance claim is produced.', flush=True)
 
     def predict(self, patient, symptoms):
         """

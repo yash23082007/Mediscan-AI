@@ -38,6 +38,7 @@ CREATE TABLE doctors (
     password_hash VARCHAR(255) NOT NULL,
     specialization VARCHAR(255) NOT NULL,
     license_number VARCHAR(100),
+    is_synthetic BOOLEAN NOT NULL DEFAULT FALSE,
     role VARCHAR(20) DEFAULT 'doctor' CHECK (role IN ('doctor', 'admin')),
     is_verified BOOLEAN DEFAULT FALSE,
     is_active BOOLEAN DEFAULT TRUE,

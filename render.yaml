@@ -7,11 +7,13 @@ services:
     buildCommand: npm install
     startCommand: npm start
     plan: free
-    healthCheckPath: /api/health
+    healthCheckPath: /api/health/ready
     envVars:
       - key: NODE_ENV
         value: production
       - key: CORS_ORIGIN
+        sync: false
+      - key: DATABASE_URL
         sync: false
       - key: JWT_ACCESS_SECRET
         generateValue: true
@@ -28,7 +30,10 @@ services:
       - key: AI_ENGINE_URL
         sync: false
       - key: AI_API_KEY
-        sync: false
+        fromService:
+          type: web
+          name: althea-ai-engine
+          envVarKey: AI_API_KEY
 
   # 2. Python AI Engine Microservice
   - type: web

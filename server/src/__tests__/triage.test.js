@@ -1,21 +1,23 @@
+const { describe, it } = require('node:test');
+const assert = require('node:assert/strict');
 const { assessTriage } = require('../utils/triage');
 
 describe('Clinical triage red flags', () => {
-  test('flags severe breathing difficulty as an emergency', () => {
+  it('flags severe breathing difficulty as an emergency', () => {
     const result = assessTriage({
       breathing_difficulty: 'severe'
     });
 
-    expect(result.urgency_level).toBe('emergency');
-    expect(result.red_flags).toHaveLength(1);
+    assert.equal(result.urgency_level, 'emergency');
+    assert.equal(result.red_flags.length, 1);
   });
 
-  test('keeps non-red-flag responses routine', () => {
+  it('keeps non-red-flag responses routine', () => {
     const result = assessTriage({
       breathing_difficulty: 'none'
     });
 
-    expect(result.urgency_level).toBe('routine');
-    expect(result.red_flags).toHaveLength(0);
+    assert.equal(result.urgency_level, 'routine');
+    assert.equal(result.red_flags.length, 0);
   });
 });

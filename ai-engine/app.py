@@ -7,6 +7,7 @@ and Expected Information Gain (EIG) adaptive questioning.
 import os
 import hmac
 import numpy as np
+import pandas as pd
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -217,11 +218,35 @@ def next_question():
 @app.route('/datasets/info', methods=['GET'])
 def datasets_info():
     """
-    Return authentic metadata about the clinical symptom training dataset (F9, F10).
+    Return metadata computed from the loaded symptom-profile training artifacts.
     """
+    try:
+        train_df = pd.read_csv(Config.TRAIN_DATASET)
+        test_df = pd.read_csv(Config.TEST_DATASET)
+    except (OSError, ValueError, pd.errors.ParserError) as exc:
+        app.logger.exception('Unable to read evaluation data files')
+        return jsonify({'error': 'Dataset evaluation metadata is unavailable'}), 503
+    train_df = train_df.drop(columns=[c for c in train_df.columns if 'Unnamed' in c], errors='ignore')
+    test_df = test_df.drop(columns=[c for c in test_df.columns if 'Unnamed' in c], errors='ignore')
+    shared_columns = [column for column in train_df.columns if column in test_df.columns]
+    training_rows = set(map(
+        tuple,
+        train_df[shared_columns].fillna('').astype(str).values.tolist()
+    ))
+    overlap_count = sum(
+        tuple(row) in training_rows
+        for row in test_df[shared_columns].fillna('').astype(str).values.tolist()
+    )
+
     return jsonify({
         'status': 'active',
         'metrics': classifier.metrics,
+        'evaluation': {
+            'status': 'not_independent',
+            'test_rows': len(test_df),
+            'exact_training_overlaps': overlap_count,
+            'performance_metrics_published': False
+        },
         'symptoms_count': len(classifier.feature_names),
         'conditions_count': len(classifier.label_encoder.classes_) if classifier.label_encoder else 0,
         'datasets': [

@@ -19,7 +19,8 @@ INSERT INTO decision_tree_nodes (code, question_text, category, question_type, o
  '[{"value": "fever_flu", "label": "Fever / Flu-like symptoms"}, {"value": "respiratory", "label": "Breathing / Respiratory issues"}, {"value": "digestive", "label": "Stomach / Digestive problems"}, {"value": "pain", "label": "Pain / Body aches"}, {"value": "skin", "label": "Skin issues"}, {"value": "mental", "label": "Mental health / Fatigue"}, {"value": "other", "label": "Other / Not sure"}]',
  '{"fever_flu": "fever_severity", "respiratory": "respiratory_type", "digestive": "digestive_symptoms", "pain": "pain_location", "skin": "skin_symptoms", "mental": "mental_symptoms", "other": "fever_severity"}',
  '{}',
- 1.0, 1, TRUE);
+ 1.0, 1, TRUE)
+ON CONFLICT (code) DO NOTHING;
 
 -- FEVER / FLU BRANCH
 INSERT INTO decision_tree_nodes (code, question_text, category, question_type, options, next_node_logic, condition_weights, weight, display_order, is_root) VALUES
@@ -84,7 +85,8 @@ INSERT INTO decision_tree_nodes (code, question_text, category, question_type, o
  '[{"value": "none", "label": "No difficulty"}, {"value": "mild", "label": "Mild - during activity"}, {"value": "moderate", "label": "Moderate - at rest sometimes"}, {"value": "severe", "label": "Severe - constant difficulty"}]',
  '{}',
  '{"pneumonia": 0.8, "asthma": 0.9, "covid19": 0.7, "bronchitis": 0.6, "heart_attack": 0.5}',
- 0.9, 8, FALSE);
+ 0.9, 8, FALSE)
+ON CONFLICT (code) DO NOTHING;
 
 -- RESPIRATORY BRANCH
 INSERT INTO decision_tree_nodes (code, question_text, category, question_type, options, next_node_logic, condition_weights, weight, display_order, is_root) VALUES
@@ -104,7 +106,8 @@ INSERT INTO decision_tree_nodes (code, question_text, category, question_type, o
  '[{"value": "sharp", "label": "Sharp, stabbing pain"}, {"value": "dull", "label": "Dull, heavy pressure"}, {"value": "burning", "label": "Burning sensation"}, {"value": "none", "label": "No chest pain"}]',
  '{"sharp": "general_symptoms", "dull": "general_symptoms", "burning": "general_symptoms", "none": "general_symptoms"}',
  '{"heart_attack": 0.7, "gerd": 0.5, "pneumonia": 0.4, "angina": 0.6}',
- 0.95, 12, FALSE);
+ 0.95, 12, FALSE)
+ON CONFLICT (code) DO NOTHING;
 
 -- DIGESTIVE BRANCH
 INSERT INTO decision_tree_nodes (code, question_text, category, question_type, options, next_node_logic, condition_weights, weight, display_order, is_root) VALUES
@@ -115,7 +118,8 @@ INSERT INTO decision_tree_nodes (code, question_text, category, question_type, o
  '[{"value": "nausea", "label": "Nausea / Vomiting"}, {"value": "diarrhea", "label": "Diarrhea"}, {"value": "constipation", "label": "Constipation"}, {"value": "bloating", "label": "Bloating / Gas"}, {"value": "pain", "label": "Abdominal pain"}, {"value": "appetite_loss", "label": "Loss of appetite"}, {"value": "acid_reflux", "label": "Acid reflux / Heartburn"}]',
  '{"*": "fever_severity"}',
  '{"gastroenteritis": 0.8, "gerd": 0.6, "peptic_ulcer": 0.5, "hepatitis": 0.4, "typhoid": 0.5}',
- 0.85, 20, FALSE);
+ 0.85, 20, FALSE)
+ON CONFLICT (code) DO NOTHING;
 
 -- PAIN BRANCH
 INSERT INTO decision_tree_nodes (code, question_text, category, question_type, options, next_node_logic, condition_weights, weight, display_order, is_root) VALUES
@@ -126,7 +130,8 @@ INSERT INTO decision_tree_nodes (code, question_text, category, question_type, o
  '[{"value": "head", "label": "Head"}, {"value": "joints", "label": "Joints"}, {"value": "neck_back", "label": "Neck / Back"}, {"value": "muscles", "label": "Muscles"}, {"value": "abdomen", "label": "Abdomen"}, {"value": "chest", "label": "Chest"}]',
  '{"head": "general_symptoms", "joints": "general_symptoms", "neck_back": "general_symptoms", "muscles": "general_symptoms", "abdomen": "digestive_symptoms", "chest": "chest_pain_type"}',
  '{"migraine": 0.6, "arthritis": 0.7, "osteoarthritis": 0.5, "cervical_spondylosis": 0.5}',
- 0.8, 30, FALSE);
+ 0.8, 30, FALSE)
+ON CONFLICT (code) DO NOTHING;
 
 -- SKIN BRANCH
 INSERT INTO decision_tree_nodes (code, question_text, category, question_type, options, next_node_logic, condition_weights, weight, display_order, is_root) VALUES
@@ -137,7 +142,8 @@ INSERT INTO decision_tree_nodes (code, question_text, category, question_type, o
  '[{"value": "itching", "label": "Itching"}, {"value": "rash", "label": "Rash / Red patches"}, {"value": "blister", "label": "Blisters"}, {"value": "discoloration", "label": "Skin discoloration"}, {"value": "peeling", "label": "Peeling skin"}, {"value": "swelling", "label": "Swelling / Puffiness"}]',
  '{"*": "general_symptoms"}',
  '{"fungal_infection": 0.7, "allergy": 0.6, "psoriasis": 0.5, "eczema": 0.5, "chicken_pox": 0.4}',
- 0.8, 40, FALSE);
+ 0.8, 40, FALSE)
+ON CONFLICT (code) DO NOTHING;
 
 -- MENTAL HEALTH BRANCH
 INSERT INTO decision_tree_nodes (code, question_text, category, question_type, options, next_node_logic, condition_weights, weight, display_order, is_root) VALUES
@@ -148,4 +154,5 @@ INSERT INTO decision_tree_nodes (code, question_text, category, question_type, o
  '[{"value": "anxiety", "label": "Anxiety / Nervousness"}, {"value": "depression", "label": "Low mood / Sadness"}, {"value": "fatigue", "label": "Extreme tiredness"}, {"value": "insomnia", "label": "Trouble sleeping"}, {"value": "mood_swings", "label": "Mood swings"}, {"value": "concentration", "label": "Difficulty concentrating"}]',
  '{"*": "general_symptoms"}',
  '{"depression": 0.7, "anxiety": 0.6, "chronic_fatigue": 0.5, "hypothyroidism": 0.3}',
- 0.8, 50, FALSE);
+ 0.8, 50, FALSE)
+ON CONFLICT (code) DO NOTHING;

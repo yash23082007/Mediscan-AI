@@ -29,6 +29,12 @@ if (process.env.NODE_ENV === 'production') {
   if (!process.env.AI_API_KEY) {
     throw new Error('FATAL: AI_API_KEY must be configured in production');
   }
+  if (!process.env.AI_ENGINE_URL) {
+    throw new Error('FATAL: AI_ENGINE_URL must be configured in production');
+  }
+  if (!process.env.DATABASE_URL) {
+    throw new Error('FATAL: DATABASE_URL must be configured in production');
+  }
   if (!process.env.CORS_ORIGIN) {
     throw new Error('FATAL: CORS_ORIGIN must be configured in production');
   }

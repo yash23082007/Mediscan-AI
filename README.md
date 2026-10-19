@@ -305,6 +305,10 @@ Then open http://localhost:3000.
 
 Never commit `.env`, credentials, tokens, or real patient information.
 
+### Render configuration
+
+The Render Blueprint defines the API and AI services, but does not provision a database. Before deploying, provision PostgreSQL and set `DATABASE_URL` on `althea-api`; also set `CORS_ORIGIN` and `AI_ENGINE_URL` to the deployed frontend origin and AI service URL. The API key is referenced from the AI service so both services use the same value. The API readiness check stays unhealthy until PostgreSQL and the AI service are reachable.
+
 ---
 
 ## Verification
@@ -314,18 +318,19 @@ The project was verified with:
 ```powershell
 # Backend tests: 9 tests passed
 Set-Location server
-npm test -- --runInBand
+npm test
 
-# AI engine tests: 3 tests passed
+# AI engine unit and HTTP contract tests: 11 tests passed
 Set-Location ..\ai-engine
-python test_logic.py
+python -B -m unittest discover -s . -p 'test_*.py'
 
-# Frontend production build
+# Frontend lint and production build
 Set-Location ..\client
+npm run lint
 npm run build
 ```
 
-The repository also includes browser evidence for:
+The repository includes UI screenshots for these flows. They are visual references, not evidence of a live end-to-end run against PostgreSQL:
 
 - landing page, registration, and login;
 - guided branching questionnaire;

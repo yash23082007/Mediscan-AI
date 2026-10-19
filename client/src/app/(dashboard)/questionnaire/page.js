@@ -253,16 +253,10 @@ export default function QuestionnairePage() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <span className="text-caption text-tabular">
-            ~2 min remaining
-          </span>
           <span className="question-category-tag">
             {currentQuestion?.category?.replace(/_/g, ' ') || 'Clinical Evaluation'}
           </span>
         </div>
-      </div>
-      <div className="question-progress" aria-label={`Assessment progress: ${Math.min(95, Math.round((answeredCount / 8) * 100))}%`}>
-        <span style={{ width: `${Math.min(95, Math.round((answeredCount / 8) * 100))}%` }} />
       </div>
 
       {/* Main Question Environment */}
