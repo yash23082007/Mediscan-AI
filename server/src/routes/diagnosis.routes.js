@@ -9,11 +9,11 @@ const {
   getDatasetsInfo
 } = require('../controllers/diagnosis.controller');
 
-// All routes require authentication
-router.use(authenticate);
-
-// Get clinical internet datasets metadata
+// Model metadata is public; it contains dataset provenance, not patient data.
 router.get('/datasets/info', auditLog('VIEW_DATASET_INFO', 'diagnosis'), getDatasetsInfo);
+
+// All patient diagnosis routes require authentication.
+router.use(authenticate);
 
 // Create diagnosis (patient)
 router.post('/', auditLog('CREATE_DIAGNOSIS', 'diagnosis'), createDiagnosis);

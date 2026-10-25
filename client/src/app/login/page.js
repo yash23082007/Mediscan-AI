@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
-import { IconCaduceus, IconLock } from '@/components/Icons'
+import AuthShell from '@/components/AuthShell'
 
 function LoginForm() {
   const { login } = useAuth()
@@ -33,32 +33,19 @@ function LoginForm() {
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: 'var(--surface-canvas)',
-      padding: '2rem 1.5rem'
-    }}>
-      <div className="animate-calm-fade" style={{ width: '100%', maxWidth: '440px' }}>
-        {/* Brand Header */}
-        <div className="text-center mb-4">
-          <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.625rem', color: 'var(--text-primary)', textDecoration: 'none' }}>
-            <div className="clinical-brand-symbol" style={{ width: 38, height: 38 }}>
-              <IconCaduceus size={20} color="#ffffff" />
-            </div>
-            <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: '1.375rem', letterSpacing: '-0.015em' }}>
-              MediscanAI
-            </span>
-          </Link>
-          <p className="text-caption mt-1">Clinical Symptom Assessment & Decision Support</p>
-        </div>
-
-        {/* Login Panel */}
-        <div className="clinical-card-elevated" style={{ padding: '2rem 2.25rem' }}>
-          <h1 className="heading-md mb-1" style={{ fontSize: '1.25rem' }}>Sign In to Your Workspace</h1>
-          <p className="text-caption mb-4">Access your confidential health assessments or clinical reviews</p>
+    <AuthShell
+      eyebrow="Patient and clinician access"
+      contextTitle="Symptom intake and clinician review."
+      description="Use your account to finish an assessment, read a saved summary, or open the clinician queue."
+      steps={[
+        { title: 'Your assessment', description: 'Responses stay connected to the account that submitted them.' },
+        { title: 'Experimental estimate', description: 'The model can abstain when the available evidence is limited.' },
+        { title: 'Human review', description: 'Clinician feedback is recorded separately from the model estimate.' }
+      ]}
+    >
+        <div className="clinical-card-elevated auth-card">
+          <h1 className="heading-md mb-1">Sign in</h1>
+          <p className="text-caption mb-4">Patient and clinician accounts open their own workspace after sign-in.</p>
 
           {error && (
             <div className="alert alert-error mb-3" role="alert">
@@ -66,14 +53,14 @@ function LoginForm() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} noValidate>
+          <form onSubmit={handleSubmit} aria-busy={loading}>
             <div className="form-group">
               <label className="form-label" htmlFor="login-email">Email Address</label>
               <input
                 id="login-email"
                 type="email"
                 className="form-input"
-                placeholder="name@institution.com"
+                placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -89,7 +76,7 @@ function LoginForm() {
                 id="login-password"
                 type="password"
                 className="form-input"
-                placeholder="••••••••••••"
+                placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -104,7 +91,10 @@ function LoginForm() {
               id="login-submit"
             >
               {loading ? (
-                <span className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }}></span>
+                <>
+                  <span className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} aria-hidden="true"></span>
+                  <span className="sr-only">Signing in…</span>
+                </>
               ) : (
                 'Sign In'
               )}
@@ -120,22 +110,7 @@ function LoginForm() {
             </p>
           </div>
         </div>
-
-        {/* Security & Confidentiality Reassurance */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '0.5rem',
-          marginTop: '1.25rem',
-          fontSize: '0.75rem',
-          color: 'var(--text-muted)'
-        }}>
-          <IconLock size={14} color="var(--clinical-sage)" />
-          <span>Allergies and chronic conditions are encrypted before database storage.</span>
-        </div>
-      </div>
-    </div>
+    </AuthShell>
   )
 }
 

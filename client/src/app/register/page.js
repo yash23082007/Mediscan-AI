@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
-import { IconCaduceus, IconLock, IconShield } from '@/components/Icons'
+import AuthShell from '@/components/AuthShell'
 
 function RegisterForm() {
   const { registerPatient } = useAuth()
@@ -65,33 +65,20 @@ function RegisterForm() {
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: 'var(--surface-canvas)',
-      padding: '2.5rem 1.5rem'
-    }}>
-      <div className="animate-calm-fade" style={{ width: '100%', maxWidth: '520px' }}>
-        {/* Brand Header */}
-        <div className="text-center mb-4">
-          <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.625rem', color: 'var(--text-primary)', textDecoration: 'none' }}>
-            <div className="clinical-brand-symbol" style={{ width: 38, height: 38 }}>
-              <IconCaduceus size={20} color="#ffffff" />
-            </div>
-            <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: '1.375rem', letterSpacing: '-0.015em' }}>
-              MediscanAI
-            </span>
-          </Link>
-          <p className="text-caption mt-1">Patient Profile & Clinical Intake</p>
-        </div>
-
-        {/* Card */}
-        <div className="clinical-card-elevated" style={{ padding: '2.25rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-            <h1 className="heading-md" style={{ fontSize: '1.25rem' }}>
-              {step === 1 ? 'Create Personal Account' : 'Clinical Baseline Profile'}
+    <AuthShell
+      eyebrow="Patient registration"
+      contextTitle="Set up a patient profile before your first assessment."
+      description="Create your account, add the required baseline details, then continue to the symptom questions."
+      steps={[
+        { title: 'Account details', description: 'Use an email address and a password you can keep private.' },
+        { title: 'Baseline profile', description: 'Age and sex / gender are required; other profile details are optional.' },
+        { title: 'Symptom intake', description: 'Record what you are experiencing in your own words and choices.' }
+      ]}
+    >
+        <div className="clinical-card-elevated auth-card">
+          <div className="auth-registration-heading">
+            <h1 className="heading-md">
+              {step === 1 ? 'Create your account' : 'About you'}
             </h1>
             <span className="text-caption text-tabular">
               Step {step} of 2
@@ -99,13 +86,20 @@ function RegisterForm() {
           </div>
 
           <p className="text-caption mb-3">
-            {step === 1
-              ? 'Enter your credentials to secure your private health consultations'
-              : 'Demographic and physiological baselines calibrate symptom differential weighting'}
+              {step === 1
+              ? 'Set up the account you will use to return to your assessments.'
+              : 'Add the details needed for your profile. Optional fields can be left blank.'}
           </p>
 
           {/* Stepper indicator */}
-          <div style={{
+          <div
+            className="auth-progress-track"
+            role="progressbar"
+            aria-label="Registration progress"
+            aria-valuemin={1}
+            aria-valuemax={2}
+            aria-valuenow={step}
+            style={{
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
             gap: '0.5rem',
@@ -130,17 +124,20 @@ function RegisterForm() {
           )}
 
           {step === 1 ? (
-            <form onSubmit={handleStep1} noValidate>
+            <form onSubmit={handleStep1}>
               <div className="form-group">
-                <label className="form-label" htmlFor="reg-name">Full Legal Name</label>
+                <label className="form-label" htmlFor="reg-name">Your name</label>
                 <input
                   id="reg-name"
                   type="text"
                   className="form-input"
-                  placeholder="Eleanor Vance"
+                  placeholder="Your name"
                   value={form.name}
                   onChange={(e) => updateField('name', e.target.value)}
                   required
+                  minLength={2}
+                  maxLength={255}
+                  autoComplete="name"
                 />
               </div>
 
@@ -150,10 +147,11 @@ function RegisterForm() {
                   id="reg-email"
                   type="email"
                   className="form-input"
-                  placeholder="eleanor@example.com"
+                  placeholder="you@example.com"
                   value={form.email}
                   onChange={(e) => updateField('email', e.target.value)}
                   required
+                  autoComplete="email"
                 />
               </div>
 
@@ -167,6 +165,9 @@ function RegisterForm() {
                   value={form.password}
                   onChange={(e) => updateField('password', e.target.value)}
                   required
+                  minLength={8}
+                  maxLength={128}
+                  autoComplete="new-password"
                 />
               </div>
 
@@ -180,6 +181,9 @@ function RegisterForm() {
                   value={form.confirmPassword}
                   onChange={(e) => updateField('confirmPassword', e.target.value)}
                   required
+                  minLength={8}
+                  maxLength={128}
+                  autoComplete="new-password"
                 />
               </div>
 
@@ -188,7 +192,7 @@ function RegisterForm() {
               </button>
             </form>
           ) : (
-            <form onSubmit={handleSubmit} noValidate>
+            <form onSubmit={handleSubmit} aria-busy={loading}>
               <div className="grid-2">
                 <div className="form-group">
                   <label className="form-label" htmlFor="reg-age">Age (Years)</label>
@@ -201,12 +205,12 @@ function RegisterForm() {
                     onChange={(e) => updateField('age', e.target.value)}
                     required
                     min="1"
-                    max="125"
+                    max="150"
                   />
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label" htmlFor="reg-gender">Biological Sex / Gender</label>
+                  <label className="form-label" htmlFor="reg-gender">Sex / gender</label>
                   <select
                     id="reg-gender"
                     className="form-input form-select"
@@ -234,6 +238,8 @@ function RegisterForm() {
                     value={form.weight}
                     onChange={(e) => updateField('weight', e.target.value)}
                     step="0.1"
+                    min="0.1"
+                    max="500"
                   />
                 </div>
 
@@ -247,6 +253,8 @@ function RegisterForm() {
                     value={form.height}
                     onChange={(e) => updateField('height', e.target.value)}
                     step="0.1"
+                    min="0.1"
+                    max="300"
                   />
                 </div>
               </div>
@@ -299,7 +307,10 @@ function RegisterForm() {
                   id="reg-submit"
                 >
                   {loading ? (
-                    <span className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }}></span>
+                    <>
+                      <span className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} aria-hidden="true"></span>
+                      <span className="sr-only">Creating your account…</span>
+                    </>
                   ) : (
                     'Complete Registration'
                   )}
@@ -318,21 +329,7 @@ function RegisterForm() {
           </div>
         </div>
 
-        {/* Security badge */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '0.5rem',
-          marginTop: '1.25rem',
-          fontSize: '0.75rem',
-          color: 'var(--text-muted)'
-        }}>
-          <IconShield size={14} color="var(--clinical-sage)" />
-          <span>Allergies and chronic conditions are encrypted before database storage.</span>
-        </div>
-      </div>
-    </div>
+    </AuthShell>
   )
 }
 

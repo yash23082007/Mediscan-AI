@@ -2,15 +2,16 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useAuth } from '@/context/AuthContext'
+import { AuthProvider, useAuth } from '@/context/AuthContext'
 import {
+  IconCaduceus,
   IconFileText,
   IconShield,
   IconCheckCircle
 } from '@/components/Icons'
 import ClinicalDisclaimer from '@/components/ClinicalDisclaimer'
 
-export default function DatasetsPage() {
+function DatasetsContent() {
   const { authFetch } = useAuth()
   const [liveInfo, setLiveInfo] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -39,7 +40,29 @@ export default function DatasetsPage() {
   }, [authFetch])
 
   return (
-    <div className="animate-calm-fade" style={{ maxWidth: '1000px', margin: '0 auto' }}>
+    <>
+      <header className="clinical-navbar" role="banner">
+        <div className="clinical-navbar-inner">
+          <Link href="/" className="clinical-brand" aria-label="MediscanAI Home">
+            <div className="clinical-brand-symbol" aria-hidden="true">
+              <IconCaduceus size={18} color="#ffffff" />
+            </div>
+            <span>MediscanAI</span>
+          </Link>
+          <nav className="clinical-nav-links" aria-label="Primary Navigation">
+            <Link href="/#how-it-works" className="clinical-nav-link">Methodology</Link>
+            <Link href="/#clinical-safety" className="clinical-nav-link">Safety & Privacy</Link>
+            <Link href="/datasets" className="clinical-nav-link active" aria-current="page">Clinical Datasets</Link>
+          </nav>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <Link href="/login" className="btn btn-ghost btn-sm">Sign In</Link>
+            <Link href="/register" className="btn btn-primary btn-sm">Begin Assessment</Link>
+          </div>
+        </div>
+      </header>
+      <main className="page-wrapper">
+        <div className="container">
+          <div className="animate-calm-fade" style={{ maxWidth: '1000px', margin: '0 auto' }}>
       {/* Page Header */}
       <div style={{
         paddingBottom: '1.5rem',
@@ -61,8 +84,8 @@ export default function DatasetsPage() {
           </p>
         </div>
 
-        <Link href="/questionnaire" className="btn btn-primary btn-sm">
-          Start Assessment
+        <Link href="/register" className="btn btn-primary btn-sm">
+          Begin Assessment
         </Link>
       </div>
 
@@ -103,7 +126,9 @@ export default function DatasetsPage() {
             <div style={{ fontWeight: 600, fontSize: '1.125rem', color: 'var(--text-primary)', marginTop: '0.5rem' }}>
               {liveInfo?.metrics?.calibration || '—'}
             </div>
-            <span className="text-caption" style={{ fontSize: '0.75rem' }}>CalibratedClassifierCV</span>
+            <span className="text-caption" style={{ fontSize: '0.75rem' }}>
+              {liveInfo?.metrics?.model_type || 'Model details are unavailable.'}
+            </span>
           </div>
         </div>
       </div>
@@ -167,6 +192,17 @@ export default function DatasetsPage() {
 
       {/* Clinical Disclaimer */}
       <ClinicalDisclaimer />
-    </div>
+          </div>
+        </div>
+      </main>
+    </>
+  )
+}
+
+export default function DatasetsPage() {
+  return (
+    <AuthProvider>
+      <DatasetsContent />
+    </AuthProvider>
   )
 }
