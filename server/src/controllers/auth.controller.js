@@ -1,71 +1,68 @@
 const bcrypt = require('bcryptjs');
-const { query } = require('../config/database');
+const { randomUUID } = require('node:crypto');
+const { collection } = require('../config/database');
+const { asRecord } = require('../utils/mongo');
 const { generateTokenPair, verifyRefreshToken } = require('../config/jwt');
 const { encrypt, decryptFields } = require('../config/encryption');
 const { createAuditLog } = require('../middleware/audit');
 const { sanitizeUser } = require('../utils/helpers');
 
-// Pre-computed dummy hash to prevent timing-based user enumeration attacks (SEC10)
+// Pre-computed dummy hash prevents timing-based user enumeration attacks.
 const DUMMY_HASH = '$2a$12$e8Yx9p8vJbVw7jC8lGZ.U.XGfK0v1M1QnQY0p7jO.5p1c0X5yH7eq';
+const setRefreshCookie = (res, token) => res.cookie('refreshToken', token, {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'strict',
+  path: '/api/auth',
+  maxAge: 7 * 24 * 60 * 60 * 1000
+});
 
-/**
- * Register a new patient
- * POST /api/auth/register/patient
- */
 const registerPatient = async (req, res, next) => {
   try {
     const { name, email, password, age, gender, weight, height, allergies, chronic_conditions } = req.body;
     const normalizedEmail = (email || '').toLowerCase().trim();
+    const now = new Date();
+    const patient = {
+      _id: randomUUID(),
+      name,
+      email: normalizedEmail,
+      password_hash: await bcrypt.hash(password, 12),
+      age,
+      gender,
+      weight: weight || null,
+      height: height || null,
+      allergies: allergies ? encrypt(allergies) : null,
+      chronic_conditions: chronic_conditions ? encrypt(chronic_conditions) : null,
+      role: 'patient',
+      is_synthetic: false,
+      is_active: true,
+      created_at: now,
+      updated_at: now
+    };
 
-    // Check if email already exists in patients or doctors
-    const existingPatient = await query('SELECT id FROM patients WHERE email = $1', [normalizedEmail]);
-    const existingDoctor = await query('SELECT id FROM doctors WHERE email = $1', [normalizedEmail]);
-
-    if (existingPatient.rows.length > 0 || existingDoctor.rows.length > 0) {
-      return res.status(409).json({ error: 'Email already registered' });
+    try {
+      await collection('users').insertOne(patient);
+    } catch (error) {
+      if (error.code === 11000) return res.status(409).json({ error: 'Email already registered' });
+      throw error;
     }
 
-    // Hash password
-    const password_hash = await bcrypt.hash(password, 12);
-
-    // Encrypt sensitive clinical fields
-    const encryptedAllergies = allergies ? encrypt(allergies) : null;
-    const encryptedConditions = chronic_conditions ? encrypt(chronic_conditions) : null;
-
-    // Insert patient
-    const result = await query(
-      `INSERT INTO patients (name, email, password_hash, age, gender, weight, height, allergies, chronic_conditions, role)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'patient')
-       RETURNING id, name, email, age, gender, weight, height, role, created_at`,
-      [name, normalizedEmail, password_hash, age, gender, weight || null, height || null, encryptedAllergies, encryptedConditions]
-    );
-
-    const patient = decryptFields(result.rows[0], ['allergies', 'chronic_conditions']);
-    const tokens = generateTokenPair(patient);
-
-    // Set refresh token as secure HttpOnly cookie
-    res.cookie('refreshToken', tokens.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/api/auth',
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    });
-
-    // Audit log
+    const safePatient = decryptFields(asRecord(patient), ['allergies', 'chronic_conditions']);
+    const tokens = generateTokenPair(safePatient);
+    setRefreshCookie(res, tokens.refreshToken);
     await createAuditLog({
-      userId: patient.id,
+      userId: safePatient.id,
       userRole: 'patient',
       action: 'REGISTER',
       resource: 'patient',
-      resourceId: patient.id,
+      resourceId: safePatient.id,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent']
     });
 
     res.status(201).json({
       message: 'Registration successful',
-      user: sanitizeUser(patient),
+      user: sanitizeUser(safePatient),
       accessToken: tokens.accessToken,
       expiresIn: tokens.expiresIn
     });
@@ -74,53 +71,23 @@ const registerPatient = async (req, res, next) => {
   }
 };
 
-/**
- * Login (unified for patients and verified doctors)
- * POST /api/auth/login
- */
 const login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
-    const normalizedEmail = (email || '').toLowerCase().trim();
+    const normalizedEmail = (req.body.email || '').toLowerCase().trim();
+    const userDoc = await collection('users').findOne({ email: normalizedEmail });
 
-    // Check patients table
-    let result = await query(
-      'SELECT id, name, email, password_hash, role, is_active FROM patients WHERE email = $1',
-      [normalizedEmail]
-    );
-
-    let userType = 'patient';
-
-    // If not found in patients, check doctors
-    if (result.rows.length === 0) {
-      result = await query(
-        'SELECT id, name, email, password_hash, role, is_active, is_verified FROM doctors WHERE email = $1',
-        [normalizedEmail]
-      );
-      userType = 'doctor';
-    }
-
-    // Timing attack mitigation: always run bcrypt.compare even if user not found (SEC10)
-    if (result.rows.length === 0) {
-      await bcrypt.compare(password, DUMMY_HASH);
+    if (!userDoc) {
+      await bcrypt.compare(req.body.password, DUMMY_HASH);
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    const user = result.rows[0];
+    const user = asRecord(userDoc);
+    if (user.is_active === false) return res.status(403).json({ error: 'Account is deactivated' });
 
-    // Check active status
-    if (user.is_active === false) {
-      return res.status(403).json({ error: 'Account is deactivated' });
-    }
+    const isValidPassword = await bcrypt.compare(req.body.password, user.password_hash);
+    if (!isValidPassword) return res.status(401).json({ error: 'Invalid email or password' });
 
-    // Verify password
-    const isValidPassword = await bcrypt.compare(password, user.password_hash);
-    if (!isValidPassword) {
-      return res.status(401).json({ error: 'Invalid email or password' });
-    }
-
-    // For doctors: verify clinical credential approval (SEC1)
-    if (user.role === 'doctor' && user.is_verified === false) {
+    if (['doctor', 'admin'].includes(user.role) && user.is_verified === false) {
       return res.status(403).json({
         error: 'Clinical account is pending administrative credential verification',
         code: 'DOCTOR_UNVERIFIED'
@@ -128,26 +95,16 @@ const login = async (req, res, next) => {
     }
 
     const tokens = generateTokenPair(user);
-
-    // Audit log
     await createAuditLog({
       userId: user.id,
       userRole: user.role,
       action: 'LOGIN',
-      resource: userType,
+      resource: user.role,
       resourceId: user.id,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent']
     });
-
-    // Set refresh token as strict HttpOnly cookie (SEC3)
-    res.cookie('refreshToken', tokens.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/api/auth',
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    });
+    setRefreshCookie(res, tokens.refreshToken);
 
     res.json({
       message: 'Login successful',
@@ -160,50 +117,25 @@ const login = async (req, res, next) => {
   }
 };
 
-/**
- * Refresh access token
- * POST /api/auth/refresh
- */
-const refreshToken = async (req, res, next) => {
+const refreshToken = async (req, res) => {
   try {
     const token = req.cookies?.refreshToken || req.body?.refreshToken;
-
-    if (!token) {
-      return res.status(401).json({ error: 'Refresh token required' });
-    }
+    if (!token) return res.status(401).json({ error: 'Refresh token required' });
 
     const decoded = verifyRefreshToken(token);
-
-    // Fetch current user data
-    let result = await query('SELECT id, name, email, role, is_active FROM patients WHERE id = $1', [decoded.id]);
-    if (result.rows.length === 0) {
-      result = await query('SELECT id, name, email, role, is_active, is_verified FROM doctors WHERE id = $1', [decoded.id]);
-    }
-
-    if (result.rows.length === 0 || result.rows[0].is_active === false) {
+    const userDoc = await collection('users').findOne({ _id: decoded.id });
+    if (!userDoc || userDoc.is_active === false) {
       return res.status(401).json({ error: 'User account not found or deactivated' });
     }
 
-    const user = result.rows[0];
-
-    if (user.role === 'doctor' && user.is_verified === false) {
+    const user = asRecord(userDoc);
+    if (['doctor', 'admin'].includes(user.role) && user.is_verified === false) {
       return res.status(403).json({ error: 'Doctor account is not verified' });
     }
 
     const tokens = generateTokenPair(user);
-
-    res.cookie('refreshToken', tokens.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/api/auth',
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    });
-
-    res.json({
-      accessToken: tokens.accessToken,
-      expiresIn: tokens.expiresIn
-    });
+    setRefreshCookie(res, tokens.refreshToken);
+    res.json({ accessToken: tokens.accessToken, expiresIn: tokens.expiresIn });
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({ error: 'Refresh token expired. Please log in again.' });
@@ -212,10 +144,6 @@ const refreshToken = async (req, res, next) => {
   }
 };
 
-/**
- * Logout
- * POST /api/auth/logout
- */
 const logout = async (req, res, next) => {
   try {
     if (req.user) {
@@ -229,7 +157,6 @@ const logout = async (req, res, next) => {
         userAgent: req.headers['user-agent']
       });
     }
-
     res.clearCookie('refreshToken', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -242,48 +169,19 @@ const logout = async (req, res, next) => {
   }
 };
 
-/**
- * Get current user profile (with decrypted sensitive fields) (SEC13)
- * GET /api/auth/me
- */
 const getProfile = async (req, res, next) => {
   try {
-    const { id, role } = req.user;
-    let result;
+    const userDoc = await collection('users').findOne({ _id: req.user.id, role: req.user.role });
+    if (!userDoc) return res.status(404).json({ error: 'User not found' });
 
-    if (role === 'patient') {
-      result = await query(
-        'SELECT id, name, email, age, gender, weight, height, allergies, chronic_conditions, role, created_at FROM patients WHERE id = $1',
-        [id]
-      );
-    } else {
-      result = await query(
-        'SELECT id, name, email, specialization, license_number, role, is_verified, created_at FROM doctors WHERE id = $1',
-        [id]
-      );
-    }
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const userData = result.rows[0];
-
-    // Decrypt sensitive patient clinical fields before returning to authorized user (SEC13)
-    const sanitized = role === 'patient'
-      ? decryptFields(userData, ['allergies', 'chronic_conditions'])
-      : userData;
-
-    res.json({ user: sanitizeUser(sanitized) });
+    const user = asRecord(userDoc);
+    const profile = user.role === 'patient'
+      ? decryptFields(user, ['allergies', 'chronic_conditions'])
+      : user;
+    res.json({ user: sanitizeUser(profile) });
   } catch (error) {
     next(error);
   }
 };
 
-module.exports = {
-  registerPatient,
-  login,
-  refreshToken,
-  logout,
-  getProfile
-};
+module.exports = { registerPatient, login, refreshToken, logout, getProfile };

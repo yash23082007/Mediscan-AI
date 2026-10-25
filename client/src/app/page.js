@@ -91,37 +91,57 @@ export default function Home() {
 
       <main style={{ flex: 1 }}>
         {/* Editorial Masthead / Hero */}
-        <section style={{ padding: '4.5rem 0 3.5rem', borderBottom: '1px solid var(--border-subtle)' }}>
-          <div className="container-narrow">
-            <div className="animate-calm-fade">
-              <div className="eyebrow-clinical mb-2" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--clinical-teal)' }}></span>
-                Clinical Symptom Assessment & Triage
+        <section className="home-hero-section">
+          <div className="container">
+            <div className="home-hero-grid animate-calm-fade">
+              <div className="home-hero-copy">
+                <div className="eyebrow-clinical mb-2" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span className="home-status-dot" aria-hidden="true"></span>
+                  Clinical symptom intake & triage
+                </div>
+
+                <h1 className="editorial-display mb-3" style={{ color: 'var(--text-primary)' }}>
+                  Care begins with clarity.
+                </h1>
+
+                <p className="text-editorial-lead mb-4">
+                  A guided place to record what you are experiencing, understand the limits of an experimental estimate, and bring a clear summary to a clinician.
+                </p>
+
+                <div className="home-hero-actions">
+                  <Link href="/register" className="btn btn-primary btn-lg" id="hero-start-btn">
+                    Start a symptom assessment
+                    <IconArrowRight size={18} />
+                  </Link>
+                  <Link href="/login" className="btn btn-secondary btn-lg">
+                    Sign in
+                  </Link>
+                </div>
+
+                <div className="home-hero-note">
+                  <IconLock size={15} color="var(--clinical-sage)" aria-hidden="true" />
+                  <span>Assessment requires an account. Dataset information is available without signing in.</span>
+                </div>
               </div>
 
-              <h1 className="editorial-display mb-3" style={{ color: 'var(--text-primary)' }}>
-                Care begins with clarity.
-              </h1>
-
-              <p className="text-editorial-lead mb-4">
-                MediscanAI is a research prototype for guided symptom intake and experimental model estimates. It has not been clinically validated.
-              </p>
-
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.875rem', alignItems: 'center' }}>
-                <Link href="/register" className="btn btn-primary btn-lg" id="hero-start-btn">
-                  Start Symptom Assessment
-                  <IconArrowRight size={18} />
-                </Link>
-                <Link href="/login" className="btn btn-secondary btn-lg">
-                  Clinician Portal
-                </Link>
-              </div>
-
-              {/* Contextual Clinical Note */}
-              <div style={{ marginTop: '2rem', display: 'flex', alignItems: 'center', gap: '0.625rem', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-                <IconLock size={15} color="var(--clinical-sage)" />
-                <span>Assessment requires an account. Dataset information is available without signing in.</span>
-              </div>
+              <aside className="home-pathway-card" aria-label="How an assessment is put together">
+                <div className="home-pathway-heading">
+                  <p className="eyebrow-clinical">A clear path through the visit</p>
+                  <h2>From first question to review.</h2>
+                </div>
+                <ol className="home-pathway-list">
+                  {clinicalSteps.map((step) => (
+                    <li key={step.index}>
+                      <span className="home-pathway-index">{step.index}</span>
+                      <span>{step.title}</span>
+                    </li>
+                  ))}
+                </ol>
+                <div className="home-pathway-footnote">
+                  <span className="home-pathway-mark" aria-hidden="true">i</span>
+                  <p>The model may return no estimate. A clinician remains responsible for review.</p>
+                </div>
+              </aside>
             </div>
           </div>
         </section>

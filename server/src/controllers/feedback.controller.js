@@ -1,206 +1,165 @@
-const { query, withTransaction } = require('../config/database');
+const { randomUUID } = require('node:crypto');
+const { collection, withTransaction } = require('../config/database');
+const { asRecord, asRecords } = require('../utils/mongo');
 const { createAuditLog } = require('../middleware/audit');
 const { broadcastCaseEvent } = require('../realtime');
 
-// 41 recognized model conditions for validation (C4)
 const RECOGNIZED_CONDITIONS = new Set([
-  'Malaria', 'Dengue', 'Typhoid', 'Pneumonia', 'Common Cold',
-  'Bronchial Asthma', 'Tuberculosis', 'GERD', 'Gastroenteritis',
-  'Peptic ulcer diseae', 'Diabetes ', 'Diabetes', 'Hypertension ', 'Hypertension', 'Migraine',
-  'Cervical spondylosis', 'Paralysis (brain hemorrhage)', 'Jaundice',
-  'Chicken pox', 'hepatitis A', 'Hepatitis B', 'Hepatitis C',
-  'Hepatitis D', 'Hepatitis E', 'Alcoholic hepatitis', 'Chronic cholestasis',
-  'Dimorphic hemmorhoids(piles)', 'Heart attack', 'Varicose veins',
-  'Hypothyroidism', 'Hyperthyroidism', 'Hypoglycemia', 'Osteoarthristis',
-  'Arthritis', '(vertigo) Paroymsal  Positional Vertigo', 'Acne',
-  'Urinary tract infection', 'Psoriasis', 'Impetigo', 'Fungal infection',
-  'Allergy', 'Drug Reaction', 'AIDS', 'Other'
+  'Malaria', 'Dengue', 'Typhoid', 'Pneumonia', 'Common Cold', 'Bronchial Asthma', 'Tuberculosis', 'GERD',
+  'Gastroenteritis', 'Peptic ulcer diseae', 'Diabetes ', 'Diabetes', 'Hypertension ', 'Hypertension', 'Migraine',
+  'Cervical spondylosis', 'Paralysis (brain hemorrhage)', 'Jaundice', 'Chicken pox', 'hepatitis A', 'Hepatitis B',
+  'Hepatitis C', 'Hepatitis D', 'Hepatitis E', 'Alcoholic hepatitis', 'Chronic cholestasis',
+  'Dimorphic hemmorhoids(piles)', 'Heart attack', 'Varicose veins', 'Hypothyroidism', 'Hyperthyroidism',
+  'Hypoglycemia', 'Osteoarthristis', 'Arthritis', '(vertigo) Paroymsal  Positional Vertigo', 'Acne',
+  'Urinary tract infection', 'Psoriasis', 'Impetigo', 'Fungal infection', 'Allergy', 'Drug Reaction', 'AIDS', 'Other'
 ]);
 
-/**
- * Submit feedback / review on a diagnosis
- * POST /api/feedback
- */
 const submitFeedback = async (req, res, next) => {
   try {
     const doctorId = req.user.id;
-    const { diagnosis_id, action, correction, notes } = req.body;
-
+    const { diagnosis_id: diagnosisId, action, correction, notes } = req.body;
     if (!['approve', 'override', 'correct'].includes(action)) {
       return res.status(400).json({ error: 'Action must be approve, override, or correct' });
     }
 
-    // Atomic transaction for review state machine (C1, C3)
-    const result = await withTransaction(async (client) => {
-      // 1. Fetch diagnosis with row lock to prevent race condition
-      const diagRes = await client.query(
-        'SELECT * FROM diagnoses WHERE id = $1 FOR UPDATE',
-        [diagnosis_id]
-      );
-
-      if (diagRes.rows.length === 0) {
-        const err = new Error('Diagnosis not found');
-        err.statusCode = 404;
-        throw err;
+    const result = await withTransaction(async (session) => {
+      const diagnosisCollection = collection('diagnoses');
+      const diagnosisDoc = await diagnosisCollection.findOne({ _id: diagnosisId }, { session });
+      if (!diagnosisDoc) {
+        const error = new Error('Diagnosis not found');
+        error.statusCode = 404;
+        throw error;
+      }
+      if (['approved', 'overridden', 'corrected'].includes(diagnosisDoc.status)) {
+        const error = new Error('This case has already been reviewed by a clinician');
+        error.statusCode = 409;
+        throw error;
       }
 
-      const diagnosis = diagRes.rows[0];
-
-      if (['approved', 'overridden', 'corrected'].includes(diagnosis.status)) {
-        const err = new Error('This case has already been reviewed by a clinician');
-        err.statusCode = 409;
-        throw err;
-      }
-
-      // 2. Validate correction format & vocabulary if overriding/correcting (C4)
-      let finalConditions = diagnosis.conditions;
+      let finalConditions = diagnosisDoc.conditions || [];
       let usedForRetraining = false;
-
       if (action !== 'approve') {
-        if (!correction || !correction.conditions || !Array.isArray(correction.conditions)) {
-          const err = new Error('Correction requires a valid conditions array');
-          err.statusCode = 400;
-          throw err;
+        if (!Array.isArray(correction?.conditions)) {
+          const error = new Error('Correction requires a valid conditions array');
+          error.statusCode = 400;
+          throw error;
         }
-
-        finalConditions = correction.conditions.map(c => {
-          const condName = typeof c === 'string' ? c : c.name || c.condition;
-          const cleanName = condName.trim();
-          const inVocab = RECOGNIZED_CONDITIONS.has(cleanName);
+        finalConditions = correction.conditions.map(condition => {
+          const conditionName = typeof condition === 'string' ? condition : condition.name || condition.condition || '';
+          const cleanName = conditionName.trim();
           return {
             name: cleanName,
-            in_vocabulary: inVocab,
-            confidence: c.confidence || 1.0,
-            reviewer_note: c.note || null
+            in_vocabulary: RECOGNIZED_CONDITIONS.has(cleanName),
+            confidence: typeof condition === 'object' && Number.isFinite(condition.confidence) ? condition.confidence : null,
+            reviewer_note: typeof condition === 'object' ? condition.note || null : null
           };
         });
-
-        // Only use for retraining if conditions match recognized clinical taxonomy
-        usedForRetraining = finalConditions.every(c => c.in_vocabulary && c.name !== 'Other');
+        usedForRetraining = finalConditions.length > 0 && finalConditions.every(item => item.in_vocabulary && item.name !== 'Other');
       } else {
         usedForRetraining = true;
       }
 
-      // 3. Store feedback record
-      const feedbackRes = await client.query(
-        `INSERT INTO feedback (
-          doctor_id, diagnosis_id, action,
-          original_conditions, final_conditions, correction,
-          notes, used_for_retraining, version
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1)
-        RETURNING *`,
-        [
-          doctorId,
-          diagnosis_id,
-          action,
-          JSON.stringify(diagnosis.ai_conditions || diagnosis.conditions), // Immutable original AI conditions
-          JSON.stringify(finalConditions),
-          correction ? JSON.stringify(correction) : null,
-          notes || null,
-          usedForRetraining
-        ]
+      const newStatus = action === 'approve' ? 'approved' : action === 'override' ? 'overridden' : 'corrected';
+      const now = new Date();
+      const feedback = {
+        _id: randomUUID(),
+        doctor_id: doctorId,
+        diagnosis_id: diagnosisId,
+        action,
+        original_conditions: diagnosisDoc.ai_conditions || diagnosisDoc.conditions,
+        final_conditions: finalConditions,
+        correction: correction || null,
+        notes: notes || null,
+        used_for_retraining: usedForRetraining,
+        version: 1,
+        created_at: now
+      };
+      await collection('feedback').insertOne(feedback, { session });
+
+      const update = await diagnosisCollection.updateOne(
+        { _id: diagnosisId, status: { $nin: ['approved', 'overridden', 'corrected'] } },
+        { $set: { status: newStatus, conditions: finalConditions, reviewed_by: doctorId, reviewed_at: now } },
+        { session }
       );
-
-      // 4. Update diagnosis status & reviewer info
-      let newStatus = action === 'approve' ? 'approved' : action === 'override' ? 'overridden' : 'corrected';
-
-      await client.query(
-        `UPDATE diagnoses
-         SET status = $1,
-             conditions = $2,
-             reviewed_by = $3,
-             reviewed_at = NOW()
-         WHERE id = $4`,
-        [newStatus, JSON.stringify(finalConditions), doctorId, diagnosis_id]
-      );
-
-      return feedbackRes.rows[0];
+      if (update.modifiedCount !== 1) {
+        const error = new Error('This case has already been reviewed by a clinician');
+        error.statusCode = 409;
+        throw error;
+      }
+      return asRecord(feedback);
     });
 
-    // 5. Create audit log
     await createAuditLog({
       userId: doctorId,
-      userRole: 'doctor',
+      userRole: req.user.role,
       action: `FEEDBACK_${action.toUpperCase()}`,
       resource: 'diagnosis',
-      resourceId: diagnosis_id,
+      resourceId: diagnosisId,
       details: { feedbackId: result.id, action },
       ipAddress: req.ip,
       userAgent: req.headers['user-agent']
     });
 
-    // 6. Broadcast live SSE update to patient and triage queue (§6.1, §6.2)
     broadcastCaseEvent({
       type: 'case_reviewed',
-      case_id: diagnosis_id,
+      case_id: diagnosisId,
       status: action === 'approve' ? 'approved' : action === 'override' ? 'overridden' : 'corrected',
       reviewer_id: doctorId,
-      reviewed_at: new Date().toISOString()
+      reviewed_at: result.created_at
     });
 
-    res.status(201).json({
-      message: 'Clinical review submitted successfully',
-      feedback: result
-    });
+    res.status(201).json({ message: 'Clinical review submitted successfully', feedback: result });
   } catch (error) {
-    if (error.statusCode) {
-      return res.status(error.statusCode).json({ error: error.message });
-    }
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    if (error.code === 11000) return res.status(409).json({ error: 'This case has already been reviewed by a clinician' });
     next(error);
   }
 };
 
-/**
- * Get feedback for a diagnosis
- * GET /api/feedback/diagnosis/:diagnosisId
- */
 const getFeedbackByDiagnosis = async (req, res, next) => {
   try {
-    const { diagnosisId } = req.params;
-
-    const result = await query(
-      `SELECT f.*, d.name as doctor_name, d.specialization
-       FROM feedback f
-       JOIN doctors d ON f.doctor_id = d.id
-       WHERE f.diagnosis_id = $1
-       ORDER BY f.created_at DESC`,
-      [diagnosisId]
-    );
-
-    res.json({ feedback: result.rows });
+    const documents = await collection('feedback').find({ diagnosis_id: req.params.diagnosisId }).sort({ created_at: -1 }).toArray();
+    const doctorIds = [...new Set(documents.map(item => item.doctor_id))];
+    const doctors = doctorIds.length
+      ? await collection('users').find({ _id: { $in: doctorIds }, role: { $in: ['doctor', 'admin'] } }, {
+          projection: { name: 1, specialization: 1 }
+        }).toArray()
+      : [];
+    const doctorMap = new Map(doctors.map(item => [item._id, item]));
+    const feedback = documents.map(item => {
+      const record = asRecord(item);
+      const doctor = doctorMap.get(item.doctor_id);
+      return { ...record, doctor_name: doctor?.name || 'Clinician record unavailable', specialization: doctor?.specialization || null };
+    });
+    res.json({ feedback });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * Get all feedback by a doctor
- * GET /api/feedback/my-feedback
- */
 const getMyFeedback = async (req, res, next) => {
   try {
-    const doctorId = req.user.id;
-
-    const result = await query(
-      `SELECT f.*, p.name as patient_name, d_diag.conditions
-       FROM feedback f
-       JOIN diagnoses d_diag ON f.diagnosis_id = d_diag.id
-       JOIN patients p ON d_diag.patient_id = p.id
-       WHERE f.doctor_id = $1
-       ORDER BY f.created_at DESC
-       LIMIT 50`,
-      [doctorId]
-    );
-
-    res.json({ feedback: result.rows });
+    const documents = await collection('feedback').find({ doctor_id: req.user.id }).sort({ created_at: -1 }).limit(50).toArray();
+    const diagnosisIds = [...new Set(documents.map(item => item.diagnosis_id))];
+    const diagnosisDocs = diagnosisIds.length
+      ? await collection('diagnoses').find({ _id: { $in: diagnosisIds } }, { projection: { patient_id: 1, conditions: 1 } }).toArray()
+      : [];
+    const patientIds = [...new Set(diagnosisDocs.map(item => item.patient_id))];
+    const patients = patientIds.length
+      ? await collection('users').find({ _id: { $in: patientIds }, role: 'patient' }, { projection: { name: 1 } }).toArray()
+      : [];
+    const diagnosisMap = new Map(diagnosisDocs.map(item => [item._id, item]));
+    const patientMap = new Map(patients.map(item => [item._id, item]));
+    const feedback = documents.map(item => {
+      const record = asRecord(item);
+      const diagnosis = diagnosisMap.get(item.diagnosis_id);
+      const patient = diagnosis && patientMap.get(diagnosis.patient_id);
+      return { ...record, patient_name: patient?.name || 'Patient record unavailable', conditions: diagnosis?.conditions || [] };
+    });
+    res.json({ feedback });
   } catch (error) {
     next(error);
   }
 };
 
-module.exports = {
-  submitFeedback,
-  getFeedbackByDiagnosis,
-  getMyFeedback,
-  RECOGNIZED_CONDITIONS
-};
+module.exports = { submitFeedback, getFeedbackByDiagnosis, getMyFeedback, RECOGNIZED_CONDITIONS };

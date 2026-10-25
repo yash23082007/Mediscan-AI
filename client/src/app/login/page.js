@@ -13,6 +13,7 @@ function LoginForm() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -72,16 +73,21 @@ function LoginForm() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <label className="form-label" htmlFor="login-password">Password</label>
               </div>
-              <input
-                id="login-password"
-                type="password"
-                className="form-input"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-              />
+              <div className="auth-password-row">
+                <input
+                  id="login-password"
+                  type={showPassword ? 'text' : 'password'}
+                  className="form-input"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+                <button type="button" className="btn btn-ghost btn-sm" aria-pressed={showPassword} aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(value => !value)}>
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
             </div>
 
             <button

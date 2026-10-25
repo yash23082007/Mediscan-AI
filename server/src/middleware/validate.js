@@ -47,7 +47,7 @@ const feedbackSchema = z.object({
   correction: z.object({
     conditions: z.array(z.object({
       name: z.string(),
-      confidence: z.number().min(0).max(1)
+      confidence: z.number().min(0).max(1).optional()
     })).optional(),
     notes: z.string().optional()
   }).optional(),

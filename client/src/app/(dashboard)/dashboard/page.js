@@ -3,236 +3,206 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
+import { formatDate } from '@/lib/format'
 import {
   IconStethoscope,
   IconFileText,
-  IconCheckCircle,
   IconAlertTriangle,
   IconArrowRight,
-  IconActivity,
-  IconUser
+  IconActivity
 } from '@/components/Icons'
 import ClinicalDisclaimer from '@/components/ClinicalDisclaimer'
 import EmergencyNotice from '@/components/EmergencyNotice'
+
+function formatCategory(value) {
+  if (!value) return 'Not provided'
+  return value.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())
+}
+
+function formatRecordDate(value) {
+  return formatDate(value)
+}
 
 export default function PatientDashboard() {
   const { user, authFetch, loading: authLoading } = useAuth()
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const patientId = user?.id
 
   const loadData = useCallback(async () => {
+    setLoadError('')
     try {
-      const histRes = await authFetch(`/patients/${user?.id}/history?limit=5`)
-      const histData = await histRes.json()
-      setHistory(histData.history || [])
-    } catch (err) {
-      console.error('Dashboard load error:', err)
+      const response = await authFetch('/patients/' + patientId + '/history?limit=5')
+      if (!response.ok) throw new Error('History request failed')
+      const data = await response.json()
+      if (!Array.isArray(data.history)) throw new Error('History response was incomplete')
+      setHistory(data.history)
+    } catch {
+      setLoadError('Your recent assessments could not be loaded. Check your connection and try again.')
     } finally {
       setLoading(false)
     }
-  }, [authFetch, user])
+  }, [authFetch, patientId])
 
   useEffect(() => {
-    if (authLoading || !user) return
+    if (authLoading || !patientId) return
     Promise.resolve().then(loadData)
-  }, [authLoading, loadData, user])
+  }, [authLoading, loadData, patientId])
 
-  if (loading) {
-    return (
-      <div className="dashboard-skeleton" aria-label="Loading health workspace" role="status">
-        <div className="skeleton skeleton-eyebrow" />
-        <div className="skeleton skeleton-title" />
-        <div className="skeleton skeleton-copy" />
-        <div className="grid-3">
-          {[1, 2, 3].map(item => <div key={item} className="clinical-card skeleton-card"><div className="skeleton skeleton-line" /><div className="skeleton skeleton-number" /></div>)}
-        </div>
-        <span className="text-caption">Retrieving confidential health records...</span>
-      </div>
-    )
+  const retryLoadData = () => {
+    setLoading(true)
+    loadData()
   }
 
-  const reviewedCount = history.filter(h => h.status === 'approved' || h.status === 'corrected').length
-  const latestAssessment = history[0] || null
+  const firstName = user?.name?.trim().split(/\s+/)[0]
+  const reviewedCount = history.filter(record =>
+    ['approved', 'corrected', 'overridden'].includes(record.status)
+  ).length
 
   return (
-    <div className="animate-calm-fade">
-      {/* Workspace Header */}
-      <div className="workspace-hero" style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <div className="eyebrow-clinical mb-1">Personal Health Workspace</div>
-          <h1 className="heading-xl" style={{ fontSize: '1.75rem' }}>
-            Health Overview{user?.name ? ` • ${user.name}` : ''}
-          </h1>
-          <p className="text-secondary mt-1" style={{ fontSize: '0.9375rem' }}>
-            Review past assessments, clinician feedback, and initiate new symptom consultations.
-          </p>
+    <div className="patient-workspace animate-calm-fade">
+      <header className="workspace-hero">
+        <div className="workspace-heading">
+          <p className="eyebrow-clinical">Your health workspace</p>
+          <h1>{firstName ? 'Welcome back, ' + firstName + '.' : 'Your health records'}</h1>
+          <p>Start a new symptom assessment or return to a summary you have already saved.</p>
         </div>
-
-        <Link href="/questionnaire" className="btn btn-primary workspace-primary-action" id="start-checkup">
-          <IconStethoscope size={18} />
-          <span>New Symptom Assessment</span>
+        <Link href="/questionnaire" className="btn btn-primary btn-lg workspace-primary-action" id="start-checkup">
+          <IconStethoscope size={18} aria-hidden="true" />
+          <span>Start an assessment</span>
+          <IconArrowRight size={17} aria-hidden="true" />
         </Link>
-      </div>
+      </header>
 
-      {/* Emergency Red Flag Notice */}
-      <EmergencyNotice className="mb-4" />
+      <EmergencyNotice className="workspace-emergency" />
 
-      {/* Status Highlights */}
-      <div className="grid-3 mb-4">
-        <div className="clinical-card workspace-stat-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div>
-            <span className="text-caption" style={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Recent Assessments
-            </span>
-            <div style={{ fontFamily: 'var(--font-editorial)', fontSize: '2rem', fontWeight: 500, color: 'var(--text-primary)', marginTop: '0.375rem' }}>
-              {history.length}
+      <div className="patient-workspace-grid">
+        <section className="workspace-main" aria-labelledby="history-heading">
+          <div className="workspace-section-heading">
+            <div>
+              <p className="eyebrow-clinical">Recent activity</p>
+              <h2 id="history-heading">Assessment history</h2>
             </div>
-          </div>
-          <div className="text-caption mt-2">
-            Assessments recorded in your history.
-          </div>
-        </div>
-
-        <div className="clinical-card workspace-stat-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div>
-            <span className="text-caption" style={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Clinician Review Status
-            </span>
-            <div style={{ fontFamily: 'var(--font-editorial)', fontSize: '2rem', fontWeight: 500, color: 'var(--clinical-teal)', marginTop: '0.375rem' }}>
-              {reviewedCount} / {history.length}
-            </div>
-          </div>
-          <div className="text-caption mt-2">
-            Review status shown for the assessments in your recent history.
-          </div>
-        </div>
-
-        <div className="clinical-card workspace-stat-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div>
-            <span className="text-caption" style={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Active Baseline Profile
-            </span>
-            <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginTop: '0.5rem', lineHeight: 1.4 }}>
-              {user?.age ? `${user.age} yrs` : 'Profile active'}{user?.gender ? ` • ${user.gender}` : ''}
-            </div>
-          </div>
-          <div className="text-caption mt-2">
-            {user?.chronic_conditions ? `Conditions: ${user.chronic_conditions}` : 'No chronic conditions recorded.'}
-          </div>
-        </div>
-      </div>
-
-      {/* Recent Clinical Assessments */}
-      <div className="mb-6">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.875rem' }}>
-          <h2 className="heading-sm" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <IconFileText size={18} color="var(--clinical-teal)" />
-            Recent Clinical Records
-          </h2>
-          <Link href="/health-report" className="text-caption" style={{ color: 'var(--clinical-teal)', fontWeight: 600 }}>
-            View Complete Health Document →
-          </Link>
-        </div>
-
-        {history.length === 0 ? (
-          <div className="clinical-panel-subtle workspace-empty-state text-center" style={{ padding: '3.5rem 1.5rem' }}>
-            <div style={{
-              width: 44,
-              height: 44,
-              borderRadius: '50%',
-              background: 'var(--surface-card)',
-              border: '1px solid var(--border-subtle)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 1rem',
-              color: 'var(--clinical-teal)'
-            }}>
-              <IconStethoscope size={22} />
-            </div>
-            <h3 className="heading-sm mb-1">No recorded consultations</h3>
-            <p className="text-secondary" style={{ maxWidth: '440px', margin: '0 auto 1.5rem', fontSize: '0.875rem' }}>
-              You have not conducted any symptom evaluations yet. Complete a guided 3-minute assessment to record your initial clinical report.
-            </p>
-            <Link href="/questionnaire" className="btn btn-primary">
-              Begin Initial Assessment
+            <Link href="/health-report" className="workspace-text-link">
+              Health records <IconArrowRight size={15} aria-hidden="true" />
             </Link>
           </div>
-        ) : (
-          <div className="clinical-table-wrapper">
-            <table className="clinical-table" role="table" aria-label="Assessment History">
-              <thead>
-                <tr>
-                  <th scope="col">Consultation Date</th>
-                  <th scope="col">Primary Clinical Presentation</th>
-                  <th scope="col">Evidence Level</th>
-                  <th scope="col">Clinical Review Status</th>
-                  <th scope="col" style={{ textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map((record, i) => {
-                  const primaryCondition = record.conditions?.[0]
-                  const confidenceVal = typeof primaryCondition?.confidence === 'number' ? primaryCondition.confidence : null
-                  const isReviewed = ['approved', 'corrected', 'overridden'].includes(record.status)
-                  const isPending = ['pending', 'in_review'].includes(record.status)
+
+          {loading ? (
+            <div className="workspace-state" role="status" aria-live="polite">
+              <div className="skeleton skeleton-line" />
+              <div className="skeleton skeleton-copy" />
+              <span className="sr-only">Loading your recent assessments…</span>
+            </div>
+          ) : loadError ? (
+            <div className="workspace-state workspace-error" role="alert">
+              <IconAlertTriangle size={21} aria-hidden="true" />
+              <div>
+                <h3>Records are temporarily unavailable</h3>
+                <p>{loadError}</p>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={retryLoadData}>
+                  Try again
+                </button>
+              </div>
+            </div>
+          ) : history.length === 0 ? (
+            <div className="workspace-state workspace-empty">
+              <div className="workspace-empty-mark" aria-hidden="true">
+                <IconFileText size={22} />
+              </div>
+              <div>
+                <p className="eyebrow-clinical">A clear place to start</p>
+                <h3>Your first assessment will appear here.</h3>
+                <p>Answer a guided set of symptom questions. You can review your responses and any returned model estimate in a saved summary.</p>
+                <Link href="/questionnaire" className="btn btn-primary">
+                  Begin your first assessment <IconArrowRight size={16} aria-hidden="true" />
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="workspace-history-summary" role="status">
+                <span><strong>{history.length}</strong> recent {history.length === 1 ? 'record' : 'records'}</span>
+                <span><strong>{reviewedCount}</strong> reviewed by a clinician</span>
+              </div>
+              <div className="workspace-record-list">
+                {history.map((record, index) => {
+                  const estimate = record.conditions?.[0]
+                  const confidence = typeof estimate?.confidence === 'number' && Number.isFinite(estimate.confidence)
+                    ? Math.max(0, Math.min(1, estimate.confidence))
+                    : null
+                  const reviewed = ['approved', 'corrected', 'overridden'].includes(record.status)
+                  const pending = ['pending', 'in_review'].includes(record.status)
+                  const statusLabel = reviewed ? 'Clinician reviewed' : pending ? 'Awaiting review' : formatCategory(record.status)
 
                   return (
-                    <tr key={record.id || i}>
-                      <td className="text-tabular" style={{ fontWeight: 500 }}>
-                        {new Date(record.created_at).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric'
-                        })}
-                      </td>
-                      <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                        {primaryCondition?.name || 'Symptom Assessment'}
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <div style={{
-                            width: '48px',
-                            height: '5px',
-                            background: 'var(--surface-subtle)',
-                            borderRadius: '3px',
-                            overflow: 'hidden'
-                          }}>
-                            <div style={{
-                              height: '100%',
-                              width: `${Math.round((confidenceVal || 0) * 100)}%`,
-                              background: confidenceVal >= 0.7 ? 'var(--clinical-teal)' : 'var(--triage-moderate)'
-                            }}></div>
-                          </div>
-                          <span className="text-caption text-tabular">
-                            {confidenceVal === null ? 'No estimate' : `${Math.round(confidenceVal * 100)}% estimate`}
-                          </span>
-                        </div>
-                      </td>
-                      <td>
-                        <span className={`triage-tier-badge ${isReviewed ? 'routine' : isPending ? 'moderate' : 'urgent'}`}>
-                          {isReviewed ? 'Case reviewed' : isPending ? 'Awaiting review' : record.status}
+                    <article className="workspace-record" key={record.id || index}>
+                      <div className="workspace-record-topline">
+                        <time className="workspace-record-date" dateTime={record.created_at || undefined}>
+                          {formatRecordDate(record.created_at)}
+                        </time>
+                        <span className={'triage-tier-badge ' + (reviewed ? 'routine' : pending ? 'moderate' : 'neutral')}>
+                          {statusLabel}
                         </span>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <Link
-                          href={`/diagnosis?id=${record.id}`}
-                          className="btn btn-secondary btn-sm"
-                          style={{ minHeight: '32px' }}
-                        >
-                          Review Summary
+                      </div>
+                      <div className="workspace-record-body">
+                        <div>
+                          <h3>{estimate?.name || 'Symptom assessment'}</h3>
+                          <p>{estimate ? 'Experimental model estimate' : 'No model estimate was returned for this record.'}</p>
+                        </div>
+                        {confidence !== null && (
+                          <div className="workspace-record-confidence" aria-label={Math.round(confidence * 100) + ' percent experimental model estimate'}>
+                            <span>{Math.round(confidence * 100)}%</span>
+                            <span>model estimate</span>
+                          </div>
+                        )}
+                      </div>
+                      {confidence !== null && (
+                        <div className="workspace-confidence-track" aria-hidden="true">
+                          <span style={{ width: Math.round(confidence * 100) + '%' }} />
+                        </div>
+                      )}
+                      <div className="workspace-record-footer">
+                        <span><IconActivity size={15} aria-hidden="true" /> Summary includes recorded answers and safety flags</span>
+                        <Link href={'/diagnosis?id=' + encodeURIComponent(record.id)}>
+                          Open summary <IconArrowRight size={15} aria-hidden="true" />
                         </Link>
-                      </td>
-                    </tr>
+                      </div>
+                    </article>
                   )
                 })}
-              </tbody>
-            </table>
-          </div>
-        )}
+              </div>
+            </>
+          )}
+        </section>
+
+        <aside className="workspace-rail" aria-label="Profile and assessment guidance">
+          <section className="workspace-rail-card workspace-profile-card">
+            <p className="eyebrow-clinical">Profile on file</p>
+            <h2>Your baseline</h2>
+            <dl>
+              <div><dt>Age</dt><dd>{user?.age ? user.age + ' years' : 'Not provided'}</dd></div>
+              <div><dt>Sex / gender</dt><dd>{formatCategory(user?.gender)}</dd></div>
+            </dl>
+            <p className="workspace-rail-note">Review these details with a healthcare professional if they are out of date.</p>
+          </section>
+
+          <section className="workspace-rail-card workspace-guide-card">
+            <p className="eyebrow-clinical">Before you begin</p>
+            <h2>What to expect</h2>
+            <ol>
+              <li><span>01</span><div><strong>Describe what changed</strong><p>Choose the answers that best match what you are experiencing.</p></div></li>
+              <li><span>02</span><div><strong>Follow the questions</strong><p>Later questions depend on the answers you select.</p></div></li>
+              <li><span>03</span><div><strong>Review your summary</strong><p>Your responses and safety guidance stay visible in the record.</p></div></li>
+            </ol>
+            <Link href="/datasets" className="workspace-text-link">
+              Read about the model and its limits <IconArrowRight size={15} aria-hidden="true" />
+            </Link>
+          </section>
+        </aside>
       </div>
 
-      {/* Clinical Disclaimer */}
       <ClinicalDisclaimer />
     </div>
   )

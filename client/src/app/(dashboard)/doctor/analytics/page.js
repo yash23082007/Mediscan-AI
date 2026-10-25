@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import { formatDate } from '@/lib/format'
 import {
   IconActivity,
   IconStethoscope,
@@ -51,6 +52,10 @@ export default function AnalyticsPage() {
   const maxConditionCount = Math.max(...conditionDist.map(c => parseInt(c.count, 10) || 0), 1)
   const maxDailyCount = Math.max(...dailySubmissions.map(d => parseInt(d.count, 10) || 0), 1)
   const totalFeedback = feedbackBreakdown.reduce((sum, f) => sum + (parseInt(f.count, 10) || 0), 0)
+  const changedReviews = feedbackBreakdown
+    .filter(item => ['correct', 'override'].includes(item.action))
+    .reduce((sum, item) => sum + (parseInt(item.count, 10) || 0), 0)
+  const changeShare = totalFeedback ? Math.round((changedReviews / totalFeedback) * 100) : 0
 
   return (
     <div className="animate-calm-fade">
@@ -58,12 +63,20 @@ export default function AnalyticsPage() {
       <div style={{ marginBottom: '2rem' }}>
         <div className="eyebrow-clinical mb-1">Recorded Service Activity</div>
         <h1 className="editorial-heading-lg" style={{ fontSize: '1.875rem' }}>
-          Review Activity
+          Review activity
         </h1>
         <p className="text-secondary mt-1" style={{ fontSize: '0.9375rem' }}>
           Counts from assessments and clinician feedback recorded in this system.
         </p>
       </div>
+
+      <section className="clinical-panel-subtle mb-4" aria-labelledby="change-share-heading">
+        <h2 id="change-share-heading" className="heading-sm">How often do doctors change a model estimate?</h2>
+        <p className="editorial-heading-lg" style={{ fontSize: '2rem', marginTop: '0.35rem' }}>
+          {changedReviews} of {totalFeedback} reviews ({changeShare}%)
+        </p>
+        <p className="text-caption mt-1">Prototype review counts only. This is not a model accuracy or performance measure.</p>
+      </section>
 
       {/* Feedback Distribution Summary */}
       <div className="grid-3 mb-6">
@@ -103,11 +116,12 @@ export default function AnalyticsPage() {
       {/* Top Clinical Conditions Distribution */}
       <div className="clinical-card mb-6" style={{ padding: '1.75rem' }}>
         <h2 className="heading-sm mb-1">
-          Top Pathological Conditions Evaluated
+          Most common model estimates
         </h2>
         <p className="text-caption mb-4">
-          Frequency of model estimates recorded in submitted assessments.
+          Counts of condition names recorded in submitted assessments; not a measure of model quality.
         </p>
+        <p className="sr-only">This chart lists the most frequent model estimate labels recorded by this prototype.</p>
 
         {conditionDist.length === 0 ? (
           <p className="text-secondary" style={{ fontSize: '0.875rem' }}>No clinical condition records available.</p>
@@ -150,11 +164,12 @@ export default function AnalyticsPage() {
       {/* Daily Consultation Intake Volume */}
       <div className="clinical-card mb-6" style={{ padding: '1.75rem' }}>
         <h2 className="heading-sm mb-1">
-          Daily Assessment Volume (Past 30 Days)
+          Daily assessments (past 30 days)
         </h2>
         <p className="text-caption mb-4">
-          Temporal distribution of patient symptom consultations.
+          Number of assessments saved on each day.
         </p>
+        <p className="sr-only">This chart shows assessment counts by day for the past 30 days.</p>
 
         {dailySubmissions.length === 0 ? (
           <p className="text-secondary" style={{ fontSize: '0.875rem' }}>No recent intake activity.</p>
@@ -191,18 +206,18 @@ export default function AnalyticsPage() {
               Review Outcomes by Month
             </h2>
             <p className="text-caption mt-0.5">
-              Monthly share of reviewed cases approved without correction.
+              Monthly review counts recorded by this prototype; these do not measure clinical accuracy.
             </p>
           </div>
 
           <table className="clinical-table">
             <thead>
               <tr>
-                <th>Evaluation Month</th>
-                <th>Approved Cases</th>
-                <th>Clinician Corrections</th>
-                <th>Total Reviewed</th>
-                <th>Approval Share</th>
+                <th>Month</th>
+                <th>Approved</th>
+                <th>Changed</th>
+                <th>Total reviews</th>
+                <th>Approved share</th>
               </tr>
             </thead>
             <tbody>
@@ -215,7 +230,7 @@ export default function AnalyticsPage() {
                 return (
                   <tr key={i}>
                     <td className="text-tabular" style={{ fontWeight: 500 }}>
-                      {new Date(trend.month).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                      {formatDate(trend.month, { month: 'short', year: 'numeric' })}
                     </td>
                     <td className="text-tabular" style={{ color: 'var(--triage-routine)', fontWeight: 600 }}>
                       {approved}

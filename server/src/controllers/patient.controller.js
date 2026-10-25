@@ -1,153 +1,115 @@
-const { query } = require('../config/database');
-const { encrypt, decrypt, decryptFields } = require('../config/encryption');
+const { collection } = require('../config/database');
+const { asRecord, asRecords, escapeRegExp } = require('../utils/mongo');
+const { encrypt, decryptFields } = require('../config/encryption');
 const { sanitizeUser, getPagination, paginationMeta } = require('../utils/helpers');
 
-/**
- * Get patient profile
- * GET /api/patients/:id
- */
 const getPatient = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const result = await query(
-      `SELECT id, name, email, age, gender, weight, height, allergies, chronic_conditions, role, created_at
-       FROM patients WHERE id = $1 AND is_active = TRUE`,
-      [id]
-    );
+    const patientDoc = await collection('users').findOne({
+      _id: req.params.id,
+      role: 'patient',
+      is_active: true
+    });
+    if (!patientDoc) return res.status(404).json({ error: 'Patient not found' });
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Patient not found' });
-    }
-
-    // Decrypt sensitive fields
-    const patient = decryptFields(result.rows[0], ['allergies', 'chronic_conditions']);
+    const patient = decryptFields(asRecord(patientDoc), ['allergies', 'chronic_conditions']);
     res.json({ patient: sanitizeUser(patient) });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * Update patient profile
- * PATCH /api/patients/:id
- */
 const updatePatient = async (req, res, next) => {
   try {
-    const { id } = req.params;
     const { name, age, gender, weight, height, allergies, chronic_conditions } = req.body;
+    const updates = { updated_at: new Date() };
+    if (name !== undefined) updates.name = name;
+    if (age !== undefined) updates.age = age;
+    if (gender !== undefined) updates.gender = gender;
+    if (weight !== undefined) updates.weight = weight;
+    if (height !== undefined) updates.height = height;
+    if (allergies !== undefined) updates.allergies = encrypt(allergies);
+    if (chronic_conditions !== undefined) updates.chronic_conditions = encrypt(chronic_conditions);
 
-    const updates = [];
-    const values = [];
-    let paramCount = 1;
+    if (Object.keys(updates).length === 1) return res.status(400).json({ error: 'No fields to update' });
 
-    if (name) { updates.push(`name = $${paramCount++}`); values.push(name); }
-    if (age) { updates.push(`age = $${paramCount++}`); values.push(age); }
-    if (gender) { updates.push(`gender = $${paramCount++}`); values.push(gender); }
-    if (weight) { updates.push(`weight = $${paramCount++}`); values.push(weight); }
-    if (height) { updates.push(`height = $${paramCount++}`); values.push(height); }
-    if (allergies !== undefined) { updates.push(`allergies = $${paramCount++}`); values.push(encrypt(allergies)); }
-    if (chronic_conditions !== undefined) { updates.push(`chronic_conditions = $${paramCount++}`); values.push(encrypt(chronic_conditions)); }
-
-    if (updates.length === 0) {
-      return res.status(400).json({ error: 'No fields to update' });
-    }
-
-    values.push(id);
-    const result = await query(
-      `UPDATE patients SET ${updates.join(', ')} WHERE id = $${paramCount} AND is_active = TRUE
-       RETURNING id, name, email, age, gender, weight, height, role, updated_at`,
-      values
+    const updated = await collection('users').findOneAndUpdate(
+      { _id: req.params.id, role: 'patient', is_active: true },
+      { $set: updates },
+      { returnDocument: 'after', projection: { password_hash: 0 } }
     );
+    if (!updated) return res.status(404).json({ error: 'Patient not found' });
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Patient not found' });
-    }
-
-    res.json({ message: 'Profile updated', patient: result.rows[0] });
+    res.json({ message: 'Profile updated', patient: asRecord(updated) });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * Get all patients (doctor/admin only)
- * GET /api/patients
- */
 const getAllPatients = async (req, res, next) => {
   try {
     const { page, limit, offset } = getPagination(req.query);
-    const search = req.query.search || '';
-
-    let whereClause = 'WHERE is_active = TRUE';
-    const values = [];
-    let paramCount = 1;
-
-    if (search) {
-      whereClause += ` AND (name ILIKE $${paramCount} OR email ILIKE $${paramCount})`;
-      values.push(`%${search}%`);
-      paramCount++;
+    const filter = { role: 'patient', is_active: true };
+    if (req.query.search) {
+      const term = new RegExp(escapeRegExp(req.query.search), 'i');
+      filter.$or = [{ name: term }, { email: term }];
     }
 
-    const countResult = await query(`SELECT COUNT(*) FROM patients ${whereClause}`, values);
-    const total = parseInt(countResult.rows[0].count);
+    const [total, documents] = await Promise.all([
+      collection('users').countDocuments(filter),
+      collection('users').find(filter, {
+        projection: { name: 1, email: 1, age: 1, gender: 1, role: 1, created_at: 1 }
+      }).sort({ created_at: -1, _id: 1 }).skip(offset).limit(limit).toArray()
+    ]);
 
-    values.push(limit, offset);
-    const result = await query(
-      `SELECT id, name, email, age, gender, role, created_at
-       FROM patients ${whereClause}
-       ORDER BY created_at DESC
-       LIMIT $${paramCount} OFFSET $${paramCount + 1}`,
-      values
-    );
-
-    res.json({
-      patients: result.rows,
-      pagination: paginationMeta(total, page, limit)
-    });
+    res.json({ patients: asRecords(documents), pagination: paginationMeta(total, page, limit) });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * Get patient's diagnosis history
- * GET /api/patients/:id/history
- */
 const getPatientHistory = async (req, res, next) => {
   try {
-    const { id } = req.params;
     const { page, limit, offset } = getPagination(req.query);
+    const filter = { patient_id: req.params.id };
+    const diagnoses = collection('diagnoses');
+    const [total, documents] = await Promise.all([
+      diagnoses.countDocuments(filter),
+      diagnoses.find(filter, {
+        projection: {
+          conditions: 1,
+          confidence_scores: 1,
+          explanation: 1,
+          feature_contributions: 1,
+          status: 1,
+          reviewed_by: 1,
+          created_at: 1,
+          reviewed_at: 1
+        }
+      }).sort({ created_at: -1, _id: -1 }).skip(offset).limit(limit).toArray()
+    ]);
 
-    const countResult = await query(
-      'SELECT COUNT(*) FROM diagnoses WHERE patient_id = $1',
-      [id]
-    );
-    const total = countResult.rows?.[0]?.count ? parseInt(countResult.rows[0].count) : 0;
-
-    const result = await query(
-      `SELECT d.id, d.conditions, d.confidence_scores, d.explanation,
-              d.feature_contributions, d.status, d.created_at, d.reviewed_at,
-              doc.name as reviewer_name, doc.specialization as reviewer_specialization
-       FROM diagnoses d
-       LEFT JOIN doctors doc ON d.reviewed_by = doc.id
-       WHERE d.patient_id = $1
-       ORDER BY d.created_at DESC
-       LIMIT $2 OFFSET $3`,
-      [id, limit, offset]
-    );
-
-    res.json({
-      history: result.rows,
-      pagination: paginationMeta(total, page, limit)
+    const reviewerIds = [...new Set(documents.map(diagnosis => diagnosis.reviewed_by).filter(Boolean))];
+    const reviewers = reviewerIds.length
+      ? await collection('users').find({ _id: { $in: reviewerIds }, role: { $in: ['doctor', 'admin'] } }, {
+          projection: { name: 1, specialization: 1 }
+        }).toArray()
+      : [];
+    const reviewerMap = new Map(reviewers.map(reviewer => [reviewer._id, reviewer]));
+    const history = documents.map(document => {
+      const diagnosis = asRecord(document);
+      const reviewer = reviewerMap.get(document.reviewed_by);
+      return {
+        ...diagnosis,
+        reviewer_name: reviewer?.name || null,
+        reviewer_specialization: reviewer?.specialization || null
+      };
     });
+
+    res.json({ history, pagination: paginationMeta(total, page, limit) });
   } catch (error) {
     next(error);
   }
 };
 
-module.exports = {
-  getPatient,
-  updatePatient,
-  getAllPatients,
-  getPatientHistory
-};
+module.exports = { getPatient, updatePatient, getAllPatients, getPatientHistory };

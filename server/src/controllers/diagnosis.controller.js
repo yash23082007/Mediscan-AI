@@ -1,79 +1,49 @@
-const { query } = require('../config/database');
+const { randomUUID } = require('node:crypto');
+const { collection } = require('../config/database');
+const { asRecord } = require('../utils/mongo');
+const { decryptFields } = require('../config/encryption');
 const axios = require('axios');
 const { assessTriage } = require('../utils/triage');
 const { broadcastCaseEvent } = require('../realtime');
-
+const { createAuditLog } = require('../middleware/audit');
 const { AI_ENGINE_URL } = require('../config/ai-engine');
 const AI_API_KEY = process.env.AI_API_KEY;
 
-/**
- * Request AI diagnosis
- * POST /api/diagnoses
- */
 const createDiagnosis = async (req, res, next) => {
   try {
     const patientId = req.user.id;
-    const { questionnaire_id } = req.body;
-
-    if (!questionnaire_id) {
-      return res.status(400).json({
-        error: 'Questionnaire ID is required for clinical assessment',
-        code: 'QUESTIONNAIRE_REQUIRED'
-      });
+    const { questionnaire_id: questionnaireId } = req.body;
+    if (!questionnaireId) {
+      return res.status(400).json({ error: 'Questionnaire ID is required for clinical assessment', code: 'QUESTIONNAIRE_REQUIRED' });
     }
 
-    // Get patient info
-    const patientResult = await query(
-      'SELECT id, age, gender, weight, height, allergies, chronic_conditions FROM patients WHERE id = $1',
-      [patientId]
-    );
+    const patientDoc = await collection('users').findOne({ _id: patientId, role: 'patient', is_active: true });
+    if (!patientDoc) return res.status(404).json({ error: 'Patient not found' });
 
-    if (patientResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Patient not found' });
+    const questionnaire = await collection('questionnaire_responses').findOne({
+      _id: questionnaireId,
+      patient_id: patientId
+    });
+    if (!questionnaire) {
+      return res.status(404).json({ error: 'Questionnaire session not found or does not belong to you', code: 'QUESTIONNAIRE_NOT_FOUND' });
     }
-
-    const patient = patientResult.rows[0];
-
-    // Verify questionnaire completion and patient ownership (S7)
-    const qResult = await query(
-      'SELECT id, responses, decision_path, completed, completed_at FROM questionnaire_responses WHERE id = $1 AND patient_id = $2',
-      [questionnaire_id, patientId]
-    );
-
-    if (qResult.rows.length === 0) {
-      return res.status(404).json({
-        error: 'Questionnaire session not found or does not belong to you',
-        code: 'QUESTIONNAIRE_NOT_FOUND'
-      });
-    }
-
-    const questionnaire = qResult.rows[0];
     if (!questionnaire.completed) {
-      return res.status(400).json({
-        error: 'Questionnaire must be completed before clinical analysis',
-        code: 'QUESTIONNAIRE_INCOMPLETE'
-      });
+      return res.status(400).json({ error: 'Questionnaire must be completed before clinical analysis', code: 'QUESTIONNAIRE_INCOMPLETE' });
     }
 
-    // Only look up an existing result after proving the caller owns the session.
-    const existingDiag = await query(
-      'SELECT * FROM diagnoses WHERE questionnaire_id = $1 AND patient_id = $2',
-      [questionnaire_id, patientId]
-    );
-    if (existingDiag.rows.length > 0) {
-      return res.status(200).json({
-        diagnosis: existingDiag.rows[0],
-        message: 'Returning existing diagnosis for this session'
-      });
+    const existingDiagnosis = await collection('diagnoses').findOne({
+      questionnaire_id: questionnaireId,
+      patient_id: patientId
+    });
+    if (existingDiagnosis) {
+      return res.status(200).json({ diagnosis: asRecord(existingDiagnosis), message: 'Returning existing diagnosis for this session' });
     }
 
+    const patient = decryptFields(asRecord(patientDoc), ['allergies', 'chronic_conditions']);
     const responses = questionnaire.responses || {};
-
-    // 1. Deterministic red-flag safety triage before any ML runs (S4, S5)
     let triage = assessTriage(responses);
-
-    // 2. Call AI Engine
     let aiResult;
+
     if (triage.urgency_level === 'emergency' || triage.urgency_level === 'urgent') {
       aiResult = {
         status: 'red_flag_escalation',
@@ -84,142 +54,117 @@ const createDiagnosis = async (req, res, next) => {
         precautions: [],
         missing_evidence_hints: []
       };
-    } else try {
-      const headers = { 'Content-Type': 'application/json' };
-      if (AI_API_KEY) {
-        headers['X-API-Key'] = AI_API_KEY;
+    } else {
+      try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (AI_API_KEY) headers['X-API-Key'] = AI_API_KEY;
+        const aiResponse = await axios.post(`${AI_ENGINE_URL}/predict`, {
+          patient: {
+            age: patient.age,
+            gender: patient.gender,
+            weight: patient.weight,
+            height: patient.height,
+            allergies: patient.allergies,
+            chronic_conditions: patient.chronic_conditions
+          },
+          symptoms: responses
+        }, { headers, timeout: 15000 });
+        aiResult = aiResponse.data;
+      } catch (aiError) {
+        console.error('AI Engine request failed:', aiError.response?.status || aiError.code || 'unknown');
+        return res.status(503).json({
+          error: 'The clinical analysis service is temporarily unavailable. Your responses have been saved.',
+          code: 'AI_ENGINE_UNAVAILABLE'
+        });
       }
-
-      const aiResponse = await axios.post(`${AI_ENGINE_URL}/predict`, {
-        patient: {
-          age: patient.age,
-          gender: patient.gender,
-          weight: patient.weight,
-          height: patient.height,
-          allergies: patient.allergies,
-          chronic_conditions: patient.chronic_conditions
-        },
-        symptoms: responses
-      }, {
-        headers,
-        timeout: 15000
-      });
-
-      aiResult = aiResponse.data;
-    } catch (aiError) {
-      console.error('AI Engine error:', aiError.response?.data || aiError.message);
-      return res.status(503).json({
-        error: 'The clinical analysis service is temporarily unavailable. Your responses have been saved.',
-        code: 'AI_ENGINE_UNAVAILABLE'
-      });
     }
 
-    // Apply the second triage stage using returned model probabilities.
-    if (Array.isArray(aiResult.conditions) && aiResult.conditions.length > 0) {
-      const modelPredictions = aiResult.conditions.map(condition => ({
+    if (Array.isArray(aiResult.conditions) && aiResult.conditions.length) {
+      triage = assessTriage(responses, aiResult.conditions.map(condition => ({
         condition: condition.condition_key || condition.name,
         probability: condition.confidence
-      }));
-      triage = assessTriage(responses, modelPredictions);
+      })));
     }
 
-    // 3. Handle model response (support ok, low_confidence, insufficient_evidence)
     const conditions = aiResult.conditions || [];
     const triageLevel = triage.urgency_level || 'routine';
-
-    const contributionsPayload = {
-      factors: aiResult.feature_contributions || {},
-      clinical_overview: aiResult.clinical_overview || '',
-      precautions: aiResult.precautions || [],
-      triage,
-      status: aiResult.status || 'ok',
-      missing_evidence_hints: aiResult.missing_evidence_hints || []
+    const now = new Date();
+    const diagnosis = {
+      _id: randomUUID(),
+      patient_id: patientId,
+      questionnaire_id: questionnaireId,
+      conditions,
+      ai_conditions: conditions,
+      confidence_scores: conditions,
+      probability_vector: aiResult.probability_vector || {},
+      explanation: aiResult.explanation || '',
+      feature_contributions: {
+        factors: aiResult.feature_contributions || {},
+        clinical_overview: aiResult.clinical_overview || '',
+        precautions: aiResult.precautions || [],
+        triage,
+        status: aiResult.status || 'ok',
+        missing_evidence_hints: aiResult.missing_evidence_hints || [],
+        explanation_status: aiResult.explanation_status || 'unavailable'
+      },
+      triage_level: triageLevel,
+      triage_details: triage,
+      model_version: aiResult.model_version || 'v1.0.0',
+      status: 'pending',
+      reviewed_by: null,
+      reviewed_at: null,
+      is_synthetic: false,
+      created_at: now
     };
 
-    const diagnosisResult = await query(
-      `INSERT INTO diagnoses (
-        patient_id,
-        questionnaire_id,
-        conditions,
-        ai_conditions,
-        confidence_scores,
-        probability_vector,
-        explanation,
-        feature_contributions,
-        triage_level,
-        triage_details,
-        model_version,
-        status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending')
-      RETURNING *`,
-      [
-        patientId,
-        questionnaire_id,
-        JSON.stringify(conditions),
-        JSON.stringify(conditions), // Immutable copy of original AI conditions
-        JSON.stringify(conditions),
-        JSON.stringify(aiResult.probability_vector || {}),
-        aiResult.explanation || '',
-        JSON.stringify(contributionsPayload),
-        triageLevel,
-        JSON.stringify(triage),
-        aiResult.model_version || 'v1.0.0'
-      ]
-    );
+    try {
+      await collection('diagnoses').insertOne(diagnosis);
+    } catch (error) {
+      if (error.code === 11000) {
+        const prior = await collection('diagnoses').findOne({ questionnaire_id: questionnaireId, patient_id: patientId });
+        if (prior) return res.status(200).json({ diagnosis: asRecord(prior), message: 'Returning existing diagnosis for this session' });
+      }
+      throw error;
+    }
 
-    const savedDiag = diagnosisResult.rows[0];
+    const savedDiagnosis = asRecord(diagnosis);
+    await createAuditLog({
+      userId: patientId,
+      userRole: 'patient',
+      action: 'CREATE_DIAGNOSIS',
+      resource: 'diagnoses',
+      resourceId: savedDiagnosis.id,
+      details: {
+        questionnaire_id: questionnaireId,
+        triage_level: triageLevel,
+        conditions_count: conditions.length,
+        model_status: aiResult.status
+      }
+    });
 
-    // 4. Audit log
-    await query(
-      `INSERT INTO audit_logs (user_id, user_role, action, resource, resource_id, details)
-       VALUES ($1, 'patient', 'CREATE_DIAGNOSIS', 'diagnoses', $2, $3)`,
-      [
-        patientId,
-        savedDiag.id,
-        JSON.stringify({
-          questionnaire_id,
-          triage_level: triageLevel,
-          conditions_count: conditions.length,
-          model_status: aiResult.status
-        })
-      ]
-    );
-
-    // 5. Broadcast live SSE event to doctor triage queue (§6.1, §6.2)
     broadcastCaseEvent({
       type: 'case_created',
-      case_id: savedDiag.id,
+      case_id: savedDiagnosis.id,
       patient_id: patientId,
       status: 'pending',
       urgency: triageLevel,
       top_condition: conditions[0]?.name || 'Unspecified',
-      created_at: savedDiag.created_at
+      created_at: savedDiagnosis.created_at
     });
 
-    res.status(201).json({
-      diagnosis: savedDiag
-    });
+    res.status(201).json({ diagnosis: savedDiagnosis });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * Get verified model metadata and dataset sources
- * GET /api/diagnoses/datasets/info
- */
-const getDatasetsInfo = async (req, res, next) => {
+const getDatasetsInfo = async (req, res) => {
   try {
     const headers = {};
     if (AI_API_KEY) headers['X-API-Key'] = AI_API_KEY;
-
-    const aiResponse = await axios.get(`${AI_ENGINE_URL}/datasets/info`, {
-      headers,
-      timeout: 5000
-    });
-    res.json(aiResponse.data);
-  } catch (error) {
-    // Rule: No fake fallback metrics! Return clean 503 (F8).
+    const response = await axios.get(`${AI_ENGINE_URL}/datasets/info`, { headers, timeout: 5000 });
+    res.json(response.data);
+  } catch {
     res.status(503).json({
       status: 'unavailable',
       error: 'Model and dataset metadata service is temporarily unavailable.',
@@ -228,74 +173,62 @@ const getDatasetsInfo = async (req, res, next) => {
   }
 };
 
-/**
- * Get diagnosis by ID
- * GET /api/diagnoses/:id
- */
 const getDiagnosis = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const userId = req.user.id;
-    const userRole = req.user.role;
+    const filter = { _id: req.params.id };
+    if (req.user.role === 'patient') filter.patient_id = req.user.id;
+    const diagnosisDoc = await collection('diagnoses').findOne(filter);
+    if (!diagnosisDoc) return res.status(404).json({ error: 'Diagnosis not found' });
 
-    let result;
-    if (userRole === 'patient') {
-      result = await query(
-        `SELECT d.*, p.name as patient_name
-         FROM diagnoses d
-         JOIN patients p ON d.patient_id = p.id
-         WHERE d.id = $1 AND d.patient_id = $2`,
-        [id, userId]
-      );
-    } else {
-      result = await query(
-        `SELECT d.*, p.name as patient_name, p.age as patient_age, p.gender as patient_gender
-         FROM diagnoses d
-         JOIN patients p ON d.patient_id = p.id
-         WHERE d.id = $1`,
-        [id]
-      );
-    }
+    const diagnosis = asRecord(diagnosisDoc);
+    const patientDoc = await collection('users').findOne({ _id: diagnosis.patient_id, role: 'patient' }, {
+      projection: req.user.role === 'patient'
+        ? { name: 1 }
+        : { name: 1, age: 1, gender: 1 }
+    });
+    if (!patientDoc) return res.status(404).json({ error: 'Diagnosis not found' });
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Diagnosis not found' });
-    }
-
-    res.json({ diagnosis: result.rows[0] });
+    const patient = asRecord(patientDoc);
+    const reviewed = ['approved', 'corrected', 'overridden'].includes(diagnosis.status);
+    const feedbackDoc = reviewed
+      ? await collection('feedback').findOne({ diagnosis_id: diagnosis.id })
+      : null;
+    const reviewerDoc = feedbackDoc
+      ? await collection('users').findOne({ _id: feedbackDoc.doctor_id, role: { $in: ['doctor', 'admin'] } }, { projection: { name: 1 } })
+      : null;
+    res.json({
+      diagnosis: {
+        ...diagnosis,
+        patient_name: patient.name,
+        ...(feedbackDoc ? {
+          review: {
+            action: feedbackDoc.action,
+            notes: feedbackDoc.notes || null,
+            final_conditions: feedbackDoc.final_conditions || [],
+            reviewer_name: reviewerDoc?.name || null,
+            reviewed_at: diagnosis.reviewed_at || feedbackDoc.created_at
+          }
+        } : {}),
+        ...(req.user.role !== 'patient' ? { patient_age: patient.age, patient_gender: patient.gender } : {})
+      }
+    });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * Get patient's latest diagnosis
- * GET /api/diagnoses/latest
- */
 const getLatestDiagnosis = async (req, res, next) => {
   try {
-    const patientId = req.user.id;
-
-    const result = await query(
-      `SELECT * FROM diagnoses
-       WHERE patient_id = $1
-       ORDER BY created_at DESC
-       LIMIT 1`,
-      [patientId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'No diagnoses found' });
-    }
-
-    res.json({ diagnosis: result.rows[0] });
+    const diagnosis = await collection('diagnoses')
+      .find({ patient_id: req.user.id })
+      .sort({ created_at: -1, _id: -1 })
+      .limit(1)
+      .next();
+    if (!diagnosis) return res.status(404).json({ error: 'No diagnoses found' });
+    res.json({ diagnosis: asRecord(diagnosis) });
   } catch (error) {
     next(error);
   }
 };
 
-module.exports = {
-  createDiagnosis,
-  getDiagnosis,
-  getLatestDiagnosis,
-  getDatasetsInfo
-};
+module.exports = { createDiagnosis, getDiagnosis, getLatestDiagnosis, getDatasetsInfo };

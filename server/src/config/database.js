@@ -1,91 +1,83 @@
-const { Pool } = require('pg');
+const { MongoClient } = require('mongodb');
 
-// Build connection config from environment
-const getConnectionConfig = () => {
-  if (process.env.DATABASE_URL) {
-    return {
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-      max: parseInt(process.env.DB_POOL_MAX) || 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
-    };
-  }
+let client;
+let database;
+let connectionPromise;
 
-  return {
-    user: process.env.DB_USER || 'postgres',
-    host: process.env.DB_HOST || 'localhost',
-    database: process.env.DB_NAME || 'medical_diagnosis',
-    password: process.env.DB_PASSWORD || 'postgres123',
-    port: parseInt(process.env.DB_PORT) || 5432,
-    max: parseInt(process.env.DB_POOL_MAX) || 10,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
-  };
+const getMongoUri = () => {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) throw new Error('MONGODB_URI must be configured to connect to MongoDB');
+  return uri;
 };
 
-const pool = new Pool(getConnectionConfig());
+const createIndexes = async (db) => {
+  await Promise.all([
+    db.collection('users').createIndex({ email: 1 }, { unique: true, name: 'users_email_unique' }),
+    db.collection('decision_tree_nodes').createIndex({ code: 1 }, { unique: true, name: 'question_code_unique' }),
+    db.collection('questionnaire_responses').createIndex({ patient_id: 1, created_at: -1 }, { name: 'questionnaires_patient_created' }),
+    db.collection('diagnoses').createIndex({ questionnaire_id: 1 }, { unique: true, sparse: true, name: 'diagnosis_questionnaire_unique' }),
+    db.collection('diagnoses').createIndex({ patient_id: 1, created_at: -1 }, { name: 'diagnoses_patient_created' }),
+    db.collection('diagnoses').createIndex({ status: 1, triage_level: 1, created_at: 1 }, { name: 'diagnoses_review_queue' }),
+    db.collection('feedback').createIndex({ diagnosis_id: 1 }, { unique: true, name: 'feedback_diagnosis_unique' }),
+    db.collection('feedback').createIndex({ doctor_id: 1, created_at: -1 }, { name: 'feedback_doctor_created' }),
+    db.collection('audit_logs').createIndex({ user_id: 1, created_at: -1 }, { name: 'audit_user_created' }),
+    db.collection('audit_logs').createIndex({ action: 1, created_at: -1 }, { name: 'audit_action_created' })
+  ]);
+};
 
-// Log pool errors
-pool.on('error', (err) => {
-  console.error('[FATAL] Unexpected PostgreSQL client pool error:', err.message);
-});
+const connectDatabase = async () => {
+  if (database) return database;
+  if (!connectionPromise) {
+    connectionPromise = (async () => {
+      client = new MongoClient(getMongoUri(), {
+        appName: 'MediScanAI',
+        maxPoolSize: Number.parseInt(process.env.DB_POOL_MAX, 10) || 10,
+        serverSelectionTimeoutMS: Number.parseInt(process.env.DB_CONNECT_TIMEOUT_MS, 10) || 10000
+      });
+      await client.connect();
+      database = client.db(process.env.MONGODB_DB_NAME || undefined);
+      await createIndexes(database);
+      return database;
+    })().catch(error => {
+      if (client) void client.close().catch(() => {});
+      connectionPromise = null;
+      client = null;
+      throw error;
+    });
+  }
+  return connectionPromise;
+};
 
-/**
- * Execute a query with parameters
- * Fails honestly if database is unreachable (F1).
- *
- * @param {string} text - SQL query string
- * @param {Array} params - Query parameters
- * @returns {Promise<object>} Query result
- */
-const query = async (text, params) => {
-  const start = Date.now();
+const getDatabase = () => {
+  if (!database) throw new Error('MongoDB is not connected. Call connectDatabase() before accessing collections.');
+  return database;
+};
+
+const collection = (name) => getDatabase().collection(name);
+
+const checkDatabase = async () => {
   try {
-    const res = await pool.query(text, params);
-    const duration = Date.now() - start;
-    if (process.env.NODE_ENV === 'development' && duration > 200) {
-      console.warn(`[SLOW QUERY] ${duration}ms: ${text.slice(0, 80)}...`);
-    }
-    return res;
-  } catch (err) {
-    console.error(`[DB ERROR] Query failed: ${err.message}\nQuery: ${text}`);
-    throw err;
+    await getDatabase().command({ ping: 1 });
+    return true;
+  } catch {
+    return false;
   }
 };
 
-/**
- * Get a client from the pool for transactions
- */
-const getClient = async () => {
-  const client = await pool.connect();
-  return client;
-};
-
-/**
- * Helper to run a callback inside an atomic database transaction (C1)
- *
- * @param {Function} callback - Async function that receives the client
- * @returns {Promise<any>} Result of the callback
- */
 const withTransaction = async (callback) => {
-  const client = await pool.connect();
+  const session = client.startSession();
   try {
-    await client.query('BEGIN');
-    const result = await callback(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
+    return await session.withTransaction(() => callback(session));
   } finally {
-    client.release();
+    await session.endSession();
   }
 };
 
-module.exports = {
-  query,
-  getClient,
-  withTransaction,
-  pool
+const closeDatabase = async () => {
+  if (client) await client.close();
+  client = null;
+  database = null;
+  connectionPromise = null;
 };
+
+module.exports = { MongoClient, connectDatabase, getDatabase, collection, checkDatabase, withTransaction, closeDatabase };

@@ -4,8 +4,12 @@ import { AuthProvider, useAuth } from '@/context/AuthContext'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect } from 'react'
-import { IconCaduceus, IconUser } from '@/components/Icons'
+import { IconCaduceus, IconUser, IconActivity, IconFileText, IconStethoscope, IconShield } from '@/components/Icons'
 import ClinicalDisclaimer from '@/components/ClinicalDisclaimer'
+
+function isActivePath(pathname, href) {
+  return pathname === href || (href !== '/doctor' && pathname.startsWith(href + '/'))
+}
 
 function DashboardNav() {
   const { user, logout } = useAuth()
@@ -30,18 +34,21 @@ function DashboardNav() {
               <Link
                 href="/dashboard"
                 className={`clinical-nav-link ${pathname === '/dashboard' ? 'active' : ''}`}
+                aria-current={pathname === '/dashboard' ? 'page' : undefined}
               >
                 Health Workspace
               </Link>
               <Link
                 href="/questionnaire"
                 className={`clinical-nav-link ${pathname === '/questionnaire' ? 'active' : ''}`}
+                aria-current={pathname === '/questionnaire' ? 'page' : undefined}
               >
                 New Assessment
               </Link>
               <Link
                 href="/health-report"
                 className={`clinical-nav-link ${pathname === '/health-report' ? 'active' : ''}`}
+                aria-current={pathname === '/health-report' ? 'page' : undefined}
               >
                 Health Records
               </Link>
@@ -53,18 +60,21 @@ function DashboardNav() {
               <Link
                 href="/doctor"
                 className={`clinical-nav-link ${pathname === '/doctor' ? 'active' : ''}`}
+                aria-current={pathname === '/doctor' ? 'page' : undefined}
               >
                 Overview
               </Link>
               <Link
                 href="/doctor/submissions"
                 className={`clinical-nav-link ${pathname.startsWith('/doctor/submissions') ? 'active' : ''}`}
+                aria-current={pathname.startsWith('/doctor/submissions') ? 'page' : undefined}
               >
                 Patient Triage
               </Link>
               <Link
                 href="/doctor/analytics"
                 className={`clinical-nav-link ${pathname === '/doctor/analytics' ? 'active' : ''}`}
+                aria-current={pathname === '/doctor/analytics' ? 'page' : undefined}
               >
                 Clinical Metrics
               </Link>
@@ -74,6 +84,7 @@ function DashboardNav() {
           <Link
             href="/datasets"
             className={`clinical-nav-link ${pathname === '/datasets' ? 'active' : ''}`}
+            aria-current={pathname === '/datasets' ? 'page' : undefined}
           >
             Clinical Datasets
           </Link>
@@ -98,7 +109,7 @@ function DashboardNav() {
               <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                 {user?.name || 'User'}
               </span>
-              <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
+              <span className="dashboard-role-badge">
                 {user?.role === 'doctor' ? 'Physician' : user?.role || 'Patient'}
               </span>
             </div>
@@ -122,24 +133,24 @@ function MobileBottomNav() {
   const pathname = usePathname()
   const links = user?.role === 'patient'
     ? [
-        { href: '/dashboard', label: 'Workspace' },
-        { href: '/questionnaire', label: 'Assess' },
-        { href: '/health-report', label: 'Records' },
-        { href: '/datasets', label: 'Evidence' }
+        { href: '/dashboard', label: 'Home', Icon: IconActivity },
+        { href: '/questionnaire', label: 'Assess', Icon: IconStethoscope },
+        { href: '/health-report', label: 'Records', Icon: IconFileText },
+        { href: '/datasets', label: 'Evidence', Icon: IconShield }
       ]
     : [
-        { href: '/doctor', label: 'Overview' },
-        { href: '/doctor/submissions', label: 'Triage' },
-        { href: '/doctor/analytics', label: 'Metrics' },
-        { href: '/datasets', label: 'Evidence' }
+        { href: '/doctor', label: 'Overview', Icon: IconActivity },
+        { href: '/doctor/submissions', label: 'Triage', Icon: IconStethoscope },
+        { href: '/doctor/analytics', label: 'Metrics', Icon: IconFileText },
+        { href: '/datasets', label: 'Evidence', Icon: IconShield }
       ]
 
   return (
     <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
       {links.map(link => (
-        <Link key={link.href} href={link.href} className={pathname.startsWith(link.href) ? 'active' : ''}>
-          <span aria-hidden="true">{link.label === 'Assess' ? '+' : '•'}</span>
-          {link.label}
+        <Link key={link.href} href={link.href} className={isActivePath(pathname, link.href) ? 'active' : ''} aria-current={isActivePath(pathname, link.href) ? 'page' : undefined}>
+          <link.Icon size={18} aria-hidden="true" />
+          <span>{link.label}</span>
         </Link>
       ))}
     </nav>
@@ -156,7 +167,23 @@ function DashboardShell({ children }) {
     }
   }, [loading, router, user])
 
-  if (loading || !user) return null
+  if (loading) {
+    return (
+      <main className="page-wrapper" aria-label="Loading your workspace">
+        <div className="container">
+          <div className="dashboard-skeleton" role="status" aria-live="polite">
+            <div className="skeleton skeleton-eyebrow" />
+            <div className="skeleton skeleton-title" />
+            <div className="skeleton skeleton-copy" />
+            <div className="skeleton skeleton-card" />
+          </div>
+          <span className="sr-only">Loading your workspace…</span>
+        </div>
+      </main>
+    )
+  }
+
+  if (!user) return null
 
   return (
     <>

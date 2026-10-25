@@ -84,7 +84,7 @@ flowchart TB
         Audit["Audit logging"]
     end
 
-    subgraph Storage["PostgreSQL :5432"]
+    subgraph Storage["MongoDB :27017"]
         Data[("Patients, responses, diagnoses")]
         Feedback[("Doctor feedback + audit logs")]
     end
@@ -201,8 +201,7 @@ The training corpus contains synthetic symptom profiles, not patient diagnostic 
 - Role-based access separates patient and doctor capabilities.
 - Zod validates selected API inputs.
 - Helmet, CORS restrictions, and rate limiting protect the API surface.
-- Audit middleware records important authentication and clinical workflow actions.
-- Database triggers protect audit logs from update and delete operations.
+- Audit middleware writes important authentication and clinical workflow events as insert-only records; database-level immutability is not configured.
 
 This is a prototype. Production use would require clinical validation, privacy review, threat modelling, managed infrastructure, monitoring, and regulatory assessment.
 
@@ -215,7 +214,7 @@ This is a prototype. Production use would require clinical validation, privacy r
 | Frontend | Next.js 16, React 19, App Router |
 | Backend | Node.js, Express, Axios, Zod |
 | AI engine | Python, Flask, scikit-learn, pandas, NumPy, Joblib |
-| Database | PostgreSQL 17 |
+| Database | MongoDB 7 / MongoDB Atlas |
 | Security | bcryptjs, JWT, AES-256-GCM, Helmet, CORS, rate limiting |
 | Testing | Jest and Python `unittest` |
 | Deployment | Docker Compose, Render, Vercel, Gunicorn |
@@ -228,7 +227,7 @@ This is a prototype. Production use would require clinical validation, privacy r
 .
 ├── ai-engine/                 # Flask API, datasets, model, explanation logic
 ├── client/                    # Next.js patient and doctor interface
-├── database/                  # PostgreSQL schema and seed data
+├── database/                  # MongoDB bootstrap, demo seed, legacy SQL seed/schema
 ├── server/                    # Express API, auth, RBAC, and tests
 ├── qa-evidence/               # Browser journeys and screenshots
 ├── docker-compose.yml         # Local multi-service setup
@@ -248,7 +247,7 @@ This is a prototype. Production use would require clinical validation, privacy r
 - Node.js 18+
 - npm
 - Python 3.10+
-- PostgreSQL 17, or Docker Desktop
+- MongoDB 7 (or MongoDB Atlas), or Docker Desktop
 
 ### Recommended: Docker Compose
 
@@ -257,6 +256,8 @@ From the repository root:
 ```powershell
 docker compose up --build
 ```
+
+Compose starts MongoDB as a single-node replica set because clinician reviews use a transaction. The local database port is bound to loopback only.
 
 Open:
 
@@ -267,15 +268,17 @@ Open:
 | API health | http://localhost:3001/api/health |
 | API readiness | http://localhost:3001/api/health/ready |
 | AI engine | http://localhost:5000 |
-| PostgreSQL | localhost:5432 |
+| MongoDB | localhost:27017 |
 
 ### Run services separately
 
-Create local configuration:
+Create local configuration, then set `MONGODB_URI` to a private MongoDB connection string. For local Docker MongoDB, start the database and AI service with `docker compose up mongo ai-engine`; use `mongodb://127.0.0.1:27017/mediscan_ai?replicaSet=rs0` for the API process. For Atlas, create a database user with least-privilege access, allowlist the development IP, and put the complete URI in the ignored `.env` file or your deployment secret manager. Never paste the URI into source control or logs.
 
 ```powershell
 Copy-Item .env.example .env
 ```
+
+Set `MONGODB_URI` in `.env` before starting the API. The API creates required indexes and loads questionnaire definitions on startup.
 
 Start the AI engine:
 
@@ -307,7 +310,11 @@ Never commit `.env`, credentials, tokens, or real patient information.
 
 ### Deployment configuration
 
-The Render Blueprint provisions PostgreSQL, the API, and a private AI service. The API initializes the schema and questionnaire seed under a PostgreSQL advisory lock on first startup. The AI runtime is reachable only through Render's private network; the API key is generated once and shared through a service reference. The frontend uses a same-origin `/api/*` proxy so refresh cookies remain `HttpOnly` and `SameSite=Strict`. Set `API_ORIGIN` in the Vercel project to the deployed API's HTTPS origin and set `CORS_ORIGIN` in Render to the deployed frontend origin. The smallest Render AI and database plans are billable; review the current plan and storage costs before creating the Blueprint. The API readiness check remains unhealthy until both PostgreSQL and the model service respond.
+The Render Blueprint provisions the API and private AI service. Configure `MONGODB_URI` as a private Render environment variable pointing to MongoDB Atlas (or another reachable MongoDB replica set); the blueprint deliberately does not create a PostgreSQL database. The API ensures MongoDB indexes and questionnaire definitions at startup. The AI runtime is reachable only through Render's private network; the API key is shared through a service reference. The frontend uses a same-origin `/api/*` proxy so refresh cookies remain `HttpOnly` and `SameSite=Strict`. Set `API_ORIGIN` in Vercel to the deployed API's HTTPS origin and set `CORS_ORIGIN` in Render to the deployed frontend origin. The API readiness check remains unhealthy until both MongoDB and the model service respond.
+
+### Database migration note
+
+The API now stores data in MongoDB. No PostgreSQL instance or PostgreSQL credentials were available during this code migration, so existing PostgreSQL records have **not** been copied. `database/schema.sql` and `database/migrations/` are retained as historical PostgreSQL references; they are not used by the MongoDB runtime. Back up and explicitly migrate any existing records before switching a production deployment. Questionnaire definitions are imported from the checked-in `database/seed.sql` into MongoDB during startup.
 
 ---
 
@@ -316,11 +323,11 @@ The Render Blueprint provisions PostgreSQL, the API, and a private AI service. T
 The project was verified with:
 
 ```powershell
-# Backend tests: 9 tests passed
+# Backend tests
 Set-Location server
 npm test
 
-# AI engine unit and HTTP contract tests: 11 tests passed
+# AI engine unit and HTTP contract tests
 Set-Location ..\ai-engine
 python -B -m unittest discover -s . -p 'test_*.py'
 
@@ -331,11 +338,13 @@ npm run build
 
 # Real-stack browser acceptance (requires running Postgres, API, AI, and Next.js)
 npx playwright install chromium
-$env:E2E_ADMIN_PASSWORD = '<one-time password printed by npm run seed:demo>'
+$env:DEMO_ADMIN_PASSWORD = '<private password of at least 16 characters>'
+npm run seed:demo
+$env:E2E_ADMIN_PASSWORD = $env:DEMO_ADMIN_PASSWORD
 npm run test:e2e
 ```
 
-The repository includes UI screenshots as visual references. The Playwright acceptance flow exercises registration, assessment, diagnosis persistence, review, and patient status refresh against PostgreSQL:
+The repository includes UI screenshots as visual references. The Playwright acceptance flow exercises registration, assessment, diagnosis persistence, review, and patient status refresh against MongoDB:
 
 - landing page, registration, and login;
 - guided branching questionnaire;

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
+import { formatDate } from '@/lib/format'
 import { IconUser } from '@/components/Icons'
 import EmergencyNotice from '@/components/EmergencyNotice'
 import ClinicalDisclaimer from '@/components/ClinicalDisclaimer'
@@ -64,7 +65,7 @@ export default function HealthReportPage() {
             Personal Health Assessment Document
           </h1>
           <p className="text-caption mt-1">
-            Patient: <strong style={{ color: 'var(--text-primary)' }}>{user?.name || '—'}</strong> • Record ID: <span className="text-tabular">{user?.id ? user.id.slice(0, 8) : '—'}</span> • Generated: <span className="text-tabular">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+            Patient: <strong style={{ color: 'var(--text-primary)' }}>{user?.name || '—'}</strong> • Record ID: <span className="text-tabular">{user?.id ? user.id.slice(0, 8) : '—'}</span> • Generated: <span className="text-tabular">{formatDate(new Date(), { dateStyle: 'long' })}</span>
           </p>
         </div>
 
@@ -154,11 +155,7 @@ export default function HealthReportPage() {
                 return (
                   <tr key={record.id}>
                     <td className="text-tabular">
-                      {new Date(record.created_at).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric'
-                      })}
+                      {formatDate(record.created_at)}
                     </td>
                     <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
                       {primary?.name || 'Symptom Consultation'}

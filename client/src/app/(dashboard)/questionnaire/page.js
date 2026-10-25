@@ -6,7 +6,6 @@ import { useAuth } from '@/context/AuthContext'
 import {
   IconChevronLeft,
   IconArrowRight,
-  IconHelpCircle,
   IconCheckCircle,
   IconStethoscope,
   IconAlertTriangle
@@ -28,6 +27,7 @@ export default function QuestionnairePage() {
   const [completed, setCompleted] = useState(false)
   const [diagnosisLoading, setDiagnosisLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showStartEmergencyNotice, setShowStartEmergencyNotice] = useState(true)
 
   const startQuestionnaire = useCallback(async () => {
     try {
@@ -93,6 +93,7 @@ export default function QuestionnairePage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Response could not be saved')
+      setShowStartEmergencyNotice(false)
 
       if (data.completed) {
         setCompleted(true)
@@ -143,14 +144,19 @@ export default function QuestionnairePage() {
 
       const options = currentQuestion.options || []
       const isMulti = currentQuestion.question_type === 'multiple_choice'
+      const target = e.target
+      const insideOptions = target instanceof Element && Boolean(target.closest('.option-target-list'))
+      const isInteractive = target instanceof Element && target.matches('button, input, textarea, select, [contenteditable="true"]')
+      if (isInteractive && !insideOptions) return
       const num = parseInt(e.key, 10)
-      if (!isNaN(num) && num >= 1 && num <= options.length) {
+      if (!isNaN(num) && num >= 1 && num <= options.length && (!isInteractive || insideOptions)) {
         const optionVal = options[num - 1].value
         if (isMulti) toggleMultiple(optionVal)
         else setSelectedAnswer(optionVal)
       }
 
       if (e.key === 'Enter') {
+        if (!insideOptions) return
         const hasSelection = isMulti ? selectedMultiple.length > 0 : selectedAnswer !== null
         if (hasSelection) handleNext()
       }
@@ -162,14 +168,12 @@ export default function QuestionnairePage() {
 
   const isMulti = currentQuestion?.question_type === 'multiple_choice'
   const canProceed = isMulti ? selectedMultiple.length > 0 : selectedAnswer !== null
-  const rationaleText = 'This question is part of the guided symptom intake.'
-
   if (loading) {
     return (
-      <div className="flex justify-center items-center" style={{ minHeight: '60vh' }}>
+      <div className="flex justify-center items-center" style={{ minHeight: '60vh' }} role="status" aria-live="polite">
         <div style={{ textAlign: 'center' }}>
           <div className="spinner spinner-lg mb-3" style={{ margin: '0 auto' }}></div>
-          <h2 className="heading-sm mb-1">Initiating Clinical Consultation</h2>
+          <h2 className="heading-sm mb-1">Starting your assessment</h2>
           <p className="text-caption">Loading your first clinical question...</p>
         </div>
       </div>
@@ -191,12 +195,12 @@ export default function QuestionnairePage() {
 
   if (completed || diagnosisLoading) {
     return (
-      <div className="flex justify-center items-center" style={{ minHeight: '60vh' }}>
+      <div className="flex justify-center items-center" style={{ minHeight: '60vh' }} role="status" aria-live="polite">
         <div className="clinical-card-elevated text-center" style={{ maxWidth: '540px', padding: '3rem 2.5rem' }}>
           <div className="spinner spinner-lg mb-3" style={{ margin: '0 auto' }}></div>
           <div className="eyebrow-clinical mb-1">Differential Analysis</div>
           <h2 className="editorial-heading-lg mb-2" style={{ fontSize: '1.75rem' }}>
-            Evaluating Clinical Evidence
+            Preparing your summary
           </h2>
           <p className="text-secondary mb-4" style={{ fontSize: '0.875rem', lineHeight: 1.6 }}>
             Preparing your assessment summary. The model may return no estimate when the available information is insufficient.
@@ -217,7 +221,7 @@ export default function QuestionnairePage() {
             }}></div>
           </div>
           <p className="text-caption mt-3" style={{ fontSize: '0.75rem' }}>
-            Loading your next questionnaire step.
+            Preparing your assessment summary…
           </p>
         </div>
       </div>
@@ -233,6 +237,7 @@ export default function QuestionnairePage() {
         <button className="btn btn-ghost btn-sm" onClick={() => setError('')}>Dismiss</button>
       </div>
     )}
+      {showStartEmergencyNotice && <EmergencyNotice className="mb-4" />}
       {/* Consultation Navigation & Status Bar */}
       <div className="question-status-bar">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
@@ -247,8 +252,8 @@ export default function QuestionnairePage() {
               <span>Back</span>
             </button>
           )}
-          <span className="question-counter">
-            Consultation Inquiry • Item {answeredCount + 1}
+          <span className="question-counter" aria-live="polite">
+            Question {answeredCount + 1}
           </span>
         </div>
 
@@ -259,34 +264,29 @@ export default function QuestionnairePage() {
         </div>
       </div>
 
+      <div className="question-progress" role="progressbar" aria-label="Assessment progress" aria-valuetext={`Question ${answeredCount + 1}; the number of questions depends on your answers`}>
+        <span style={{ width: `${Math.min(92, 14 + answeredCount * 10)}%` }} />
+      </div>
+
       {/* Main Question Environment */}
       {currentQuestion && (
-        <div className="clinical-card-elevated" key={currentQuestion.id} style={{ padding: '2.5rem 2.25rem' }}>
-          <h1 className="question-statement">
+        <div className="clinical-card-elevated question-card" key={currentQuestion.id} style={{ padding: '2.5rem 2.25rem' }}>
+          <h1 className="question-statement" id="current-question-heading">
             {currentQuestion.question_text}
           </h1>
-
-          {/* Clinical Rationale — Explaining "Why am I being asked this?" */}
-          <div className="question-rationale" role="note">
-            <IconHelpCircle size={18} color="var(--clinical-teal)" style={{ flexShrink: 0, marginTop: '1px' }} />
-            <div>
-              <strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Clinical Context: </strong>
-              <span>{rationaleText}</span>
-            </div>
-          </div>
 
           {/* Instruction Note */}
           <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span className="text-caption">
               {isMulti ? 'Select all symptoms that apply to you:' : 'Select the most accurate response:'}
             </span>
-            <span className="text-caption" style={{ fontSize: '0.75rem' }}>
+            <span className="text-caption question-option-hint" style={{ fontSize: '0.75rem' }}>
               Press numbers (1-9) or click
             </span>
           </div>
 
           {/* Answer Targets */}
-          <div className="option-target-list" role={isMulti ? 'group' : 'radiogroup'}>
+          <div className="option-target-list" role={isMulti ? 'group' : 'radiogroup'} aria-labelledby="current-question-heading">
             {currentQuestion.options?.map((option, i) => {
               const isSelected = isMulti
                 ? selectedMultiple.includes(option.value)
@@ -305,10 +305,21 @@ export default function QuestionnairePage() {
                   }}
                   role={isMulti ? 'checkbox' : 'radio'}
                   aria-checked={isSelected}
-                  tabIndex={0}
+                  tabIndex={isMulti || isSelected || (selectedAnswer === null && i === 0) ? 0 : -1}
                   onKeyDown={(e) => {
+                    if (!isMulti && ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'].includes(e.key)) {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      const direction = ['ArrowDown', 'ArrowRight'].includes(e.key) ? 1 : -1
+                      const nextIndex = (i + direction + currentQuestion.options.length) % currentQuestion.options.length
+                      const nextOption = currentQuestion.options[nextIndex]
+                      setSelectedAnswer(nextOption.value)
+                      document.getElementById(`option-${nextIndex}`)?.focus()
+                      return
+                    }
                     if (e.key === ' ' || e.key === 'Enter') {
                       e.preventDefault()
+                      e.stopPropagation()
                       if (isMulti) {
                         toggleMultiple(option.value)
                       } else {
@@ -352,7 +363,10 @@ export default function QuestionnairePage() {
               id="questionnaire-next"
             >
               {submitting ? (
-                <span className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }}></span>
+                <>
+                  <span className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} aria-hidden="true"></span>
+                  <span className="sr-only">Saving your answer…</span>
+                </>
               ) : (
                 <>
                   <span>Save & Continue</span>
@@ -363,11 +377,6 @@ export default function QuestionnairePage() {
           </div>
         </div>
       )}
-
-      {/* Immediate Clinical Caution Notice */}
-      <div style={{ marginTop: '2rem' }}>
-        <EmergencyNotice />
-      </div>
 
       <div style={{ marginTop: '1rem' }}>
         <ClinicalDisclaimer compact />

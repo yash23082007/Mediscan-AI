@@ -1,73 +1,52 @@
-const { query } = require('../config/database');
+const { randomUUID } = require('node:crypto');
+const { collection } = require('../config/database');
 
-/**
- * Audit Logging Middleware
- * Logs every authenticated API action to the audit_logs table
- */
-const auditLog = (action, resource) => {
-  return async (req, res, next) => {
-    // Store original json method to intercept response
-    const originalJson = res.json.bind(res);
+/** Append-only audit writer. Audit failures never change the user response. */
+const writeAuditLog = async ({ userId, userRole, action, resource, resourceId, details, ipAddress, userAgent }) => {
+  try {
+    await collection('audit_logs').insertOne({
+      _id: randomUUID(),
+      user_id: userId || null,
+      user_role: userRole || 'anonymous',
+      action,
+      resource: resource || null,
+      resource_id: resourceId || null,
+      details: details || {},
+      ip_address: ipAddress || null,
+      user_agent: userAgent || '',
+      created_at: new Date()
+    });
+  } catch {
+    console.error('Failed to persist an audit event.');
+  }
+};
 
-    res.json = (body) => {
-      // Log after response is sent
-      logAction(req, action, resource, body).catch((err) => {
-        console.error('Audit log error:', err.message);
-      });
-      return originalJson(body);
-    };
-
-    next();
+const auditLog = (action, resource) => (req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    const safeRequestFields = req.body && Object.keys(req.body).filter(
+      key => !['password', 'password_hash', 'accessToken', 'refreshToken', 'allergies', 'chronic_conditions'].includes(key)
+    );
+    void writeAuditLog({
+      userId: req.user?.id,
+      userRole: req.user?.role || 'anonymous',
+      action,
+      resource,
+      resourceId: req.params?.id || null,
+      details: {
+        method: req.method,
+        path: req.originalUrl,
+        statusCode: body?.error ? 'error' : 'success',
+        ...(safeRequestFields?.length ? { requestFields: safeRequestFields } : {})
+      },
+      ipAddress: req.ip || req.connection?.remoteAddress,
+      userAgent: req.headers['user-agent'] || ''
+    });
+    return originalJson(body);
   };
+  next();
 };
 
-/**
- * Log an action to the audit_logs table
- */
-const logAction = async (req, action, resource, responseBody = null) => {
-  try {
-    const userId = req.user?.id || null;
-    const userRole = req.user?.role || 'anonymous';
-    const resourceId = req.params?.id || null;
-    const ipAddress = req.ip || req.connection?.remoteAddress;
-    const userAgent = req.headers['user-agent'] || '';
+const createAuditLog = writeAuditLog;
 
-    const details = {
-      method: req.method,
-      path: req.originalUrl,
-      statusCode: responseBody?.error ? 'error' : 'success',
-      ...(req.body && Object.keys(req.body).length > 0 && {
-        // Log request body but strip sensitive fields
-        requestFields: Object.keys(req.body).filter(
-          key => !['password', 'password_hash', 'accessToken', 'refreshToken'].includes(key)
-        )
-      })
-    };
-
-    await query(
-      `INSERT INTO audit_logs (user_id, user_role, action, resource, resource_id, details, ip_address, user_agent)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [userId, userRole, action, resource, resourceId, JSON.stringify(details), ipAddress, userAgent]
-    );
-  } catch (error) {
-    // Audit logging should never break the request flow
-    console.error('Failed to write audit log:', error.message);
-  }
-};
-
-/**
- * Direct audit log function (for use outside middleware)
- */
-const createAuditLog = async ({ userId, userRole, action, resource, resourceId, details, ipAddress, userAgent }) => {
-  try {
-    await query(
-      `INSERT INTO audit_logs (user_id, user_role, action, resource, resource_id, details, ip_address, user_agent)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [userId, userRole, action, resource, resourceId, JSON.stringify(details || {}), ipAddress, userAgent]
-    );
-  } catch (error) {
-    console.error('Failed to write audit log:', error.message);
-  }
-};
-
-module.exports = { auditLog, logAction, createAuditLog };
+module.exports = { auditLog, logAction: writeAuditLog, createAuditLog };

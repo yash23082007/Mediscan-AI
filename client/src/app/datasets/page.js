@@ -6,38 +6,160 @@ import { AuthProvider, useAuth } from '@/context/AuthContext'
 import {
   IconCaduceus,
   IconFileText,
-  IconShield,
-  IconCheckCircle
+  IconShield
 } from '@/components/Icons'
 import ClinicalDisclaimer from '@/components/ClinicalDisclaimer'
+
+const researchReferences = [
+  {
+    number: '01',
+    title: 'Random Forests',
+    citation: 'Breiman, 2001 · Machine Learning 45(1), 5–32',
+    relevance: 'The prototype uses a calibrated Random Forest classifier. The paper describes the ensemble method; it does not validate this medical use or this model.',
+    href: 'https://doi.org/10.1023/A:1010933404324'
+  },
+  {
+    number: '02',
+    title: 'A Unified Approach to Interpreting Model Predictions',
+    citation: 'Lundberg & Lee, 2017 · NeurIPS 30, 4765–4774',
+    relevance: 'SHAP is a research method for feature attribution. This app does not currently compute SHAP values or provide patient-specific feature explanations.',
+    href: 'https://proceedings.neurips.cc/paper/2017/hash/8a20a8621978632d76c43dfd28b67767-Abstract.html'
+  },
+  {
+    number: '03',
+    title: 'Ethics and Governance of Artificial Intelligence for Health',
+    citation: 'World Health Organization, 2021',
+    relevance: 'The guidance emphasizes human autonomy, safety, transparency, accountability, equity, and sustainability. A clinician must remain responsible for care decisions.',
+    href: 'https://www.who.int/publications/i/item/9789240029200'
+  },
+  {
+    number: '04',
+    title: 'Disease Symptom Description Dataset',
+    citation: 'Kaggle · itachi9604',
+    relevance: 'The repository supplies symptom-pattern profiles. Its record count must not be described as 4,920 verified patient records; the app treats these as synthetic profiles and reports overlap between the supplied train/test files.',
+    href: 'https://www.kaggle.com/datasets/itachi9604/disease-symptom-description-dataset'
+  },
+  {
+    number: '05',
+    title: 'Advanced Encryption Standard (FIPS 197-upd1)',
+    citation: 'National Institute of Standards and Technology, 2023 update',
+    relevance: 'The update clarifies the AES standard without changing its algorithm. Using AES alone does not establish that an application or deployment is secure or compliant.',
+    href: 'https://doi.org/10.6028/NIST.FIPS.197-upd1'
+  },
+  {
+    number: '06',
+    title: 'HIPAA Security Rule',
+    citation: 'U.S. Department of Health and Human Services · 45 CFR Part 160 and Subparts A and C of Part 164',
+    relevance: 'HIPAA obligations depend on whether an organization is a covered entity or business associate and require administrative, physical, and technical safeguards. This prototype does not claim HIPAA compliance.',
+    href: 'https://www.hhs.gov/hipaa/for-professionals/security/laws-regulations/index.html'
+  },
+  {
+    number: '07',
+    title: 'AI in Health and Medicine',
+    citation: 'Rajpurkar, Chen, Banerjee & Topol, 2022 · Nature Medicine 28, 31–38',
+    relevance: 'A review of medical AI research and deployment challenges; it is background literature, not validation evidence for this symptom classifier.',
+    href: 'https://www.nature.com/articles/s41591-021-01614-0'
+  },
+  {
+    number: '08',
+    title: 'Clinical Decision Support in the Era of Artificial Intelligence',
+    citation: 'Shortliffe & Sepúlveda, 2018 · JAMA 320(21), 2199–2200',
+    relevance: 'Clinical decision support belongs in an interactive workflow with healthcare professionals, rather than replacing their judgment.',
+    href: 'https://doi.org/10.1001/jama.2018.17163'
+  },
+  {
+    number: '09',
+    title: 'WHO guidance on large multimodal models for health',
+    citation: 'World Health Organization, 2024',
+    relevance: 'Newer WHO guidance examines large multimodal models; this app uses a classical Random Forest, so the document is governance context rather than a direct technical description of this model.',
+    href: 'https://www.who.int/publications/b/70584'
+  },
+  {
+    number: '10',
+    title: 'Marketing recommendations for AI device change plans',
+    citation: 'U.S. Food and Drug Administration, final guidance, August 2025',
+    relevance: 'The guidance discusses evidence, risk, transparency, and lifecycle change controls for relevant regulated AI-enabled devices. It is not an approval or compliance claim for this research prototype.',
+    href: 'https://www.fda.gov/regulatory-information/search-fda-guidance-documents/marketing-submission-recommendations-predetermined-change-control-plan-artificial-intelligence'
+  },
+  {
+    number: '11',
+    title: 'AI Risk Management Framework',
+    citation: 'National Institute of Standards and Technology, AI RMF 1.0 and current resources',
+    relevance: 'A voluntary framework for documenting context, measuring risk, assigning oversight, and monitoring deployed systems over time.',
+    href: 'https://airc.nist.gov/airmf-resources/airmf/'
+  }
+]
 
 function DatasetsContent() {
   const { authFetch } = useAuth()
   const [liveInfo, setLiveInfo] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [serviceStatus, setServiceStatus] = useState('checking')
+  const [metadataStatus, setMetadataStatus] = useState('checking')
+  const [modelStatus, setModelStatus] = useState('checking')
+  const [databaseStatus, setDatabaseStatus] = useState('checking')
+  const [lastStatusCheck, setLastStatusCheck] = useState(null)
+  const [refreshRequest, setRefreshRequest] = useState(0)
 
   useEffect(() => {
+    let active = true
+    let statusRequestInFlight = false
+
     async function fetchDatasetMetadata() {
       try {
-        const res = await authFetch('/api/diagnoses/datasets/info')
+        const res = await fetch('/api/diagnoses/datasets/info', { cache: 'no-store' })
         if (res.ok) {
           const data = await res.json()
-          setLiveInfo(data)
-          setServiceStatus('connected')
+          if (active && data?.status === 'active' && data?.metrics) {
+            setLiveInfo(data)
+            setMetadataStatus('connected')
+          } else if (active) {
+            setMetadataStatus('unavailable')
+          }
         } else {
-          setServiceStatus('unavailable')
+          if (active) setMetadataStatus('unavailable')
         }
-      } catch (err) {
-        console.warn('Dataset metadata fetch error:', err)
-        setServiceStatus('unavailable')
+      } catch {
+        if (active) setMetadataStatus('unavailable')
       } finally {
-        setLoading(false)
+        if (active) setLoading(false)
+      }
+    }
+
+    async function checkModelStatus() {
+      if (statusRequestInFlight) return
+      statusRequestInFlight = true
+      try {
+        const response = await fetch('/api/health/ready', { cache: 'no-store' })
+        const data = await response.json().catch(() => null)
+        if (!active) return
+        const available = data?.checks?.ai_engine === 'healthy'
+        setModelStatus(available ? 'online' : 'unavailable')
+        setDatabaseStatus(data?.checks?.database === 'healthy' ? 'healthy' : 'unavailable')
+        setLastStatusCheck(data?.timestamp ? new Date(data.timestamp) : new Date())
+      } catch {
+        if (active) {
+          setModelStatus('unavailable')
+          setDatabaseStatus('unavailable')
+          setLastStatusCheck(new Date())
+        }
+      } finally {
+        statusRequestInFlight = false
       }
     }
 
     fetchDatasetMetadata()
-  }, [authFetch])
+    checkModelStatus()
+    const refreshTimer = window.setInterval(checkModelStatus, 15000)
+
+    return () => {
+      active = false
+      window.clearInterval(refreshTimer)
+    }
+  }, [authFetch, refreshRequest])
+
+  const formatCheckedAt = (date) => date
+    ? new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit', second: '2-digit' }).format(date)
+    : null
 
   return (
     <>
@@ -142,24 +264,88 @@ function DatasetsContent() {
         </div>
       )}
 
-      {/* Service Connection Status */}
-      <div className="clinical-card mb-4" style={{ padding: '1.25rem 1.75rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-              AI Model Engine Status: {serviceStatus === 'connected' ? 'Online' : loading ? 'Checking...' : 'Unavailable'}
-            </div>
-            <div className="text-caption">
-              {serviceStatus === 'connected'
-                ? 'Model metadata loaded from the analysis service.'
-                : 'Live model metadata is unavailable.'}
-            </div>
-          </div>
-          <span className={`triage-tier-badge ${serviceStatus === 'connected' ? 'routine' : 'moderate'}`}>
-            {serviceStatus === 'connected' ? 'Connected' : 'Metadata unavailable'}
+      {/* Live process health is independent from model evidence and metadata. */}
+      <section className="clinical-card live-model-status mb-4" aria-labelledby="model-status-heading" role="status" aria-live="polite">
+        <div className="live-model-status-copy">
+          <div className="eyebrow-clinical">Live service check · refreshes every 15 seconds</div>
+          <h2 id="model-status-heading">
+            Model service: {modelStatus === 'online' ? 'Available' : modelStatus === 'checking' ? 'Checking' : 'Unavailable'}
+          </h2>
+          <p>
+            {modelStatus === 'online'
+              ? 'The model process is responding. This confirms service availability only; it does not validate an estimate.'
+              : modelStatus === 'checking'
+                ? 'Checking the analysis service now. No cached status is presented as live.'
+                : 'The analysis service did not confirm that its model is loaded. New model estimates may be unavailable.'}
+          </p>
+          <span className="text-caption">
+            {lastStatusCheck ? `Last checked ${formatCheckedAt(lastStatusCheck)} · local time shown by your browser` : 'Waiting for the first health check'}
           </span>
         </div>
+        <div className="live-model-status-actions">
+          <span className={`triage-tier-badge ${modelStatus === 'online' ? 'routine' : 'moderate'}`}>
+            {modelStatus === 'online' ? 'Model loaded' : modelStatus === 'checking' ? 'Checking' : 'Not confirmed'}
+          </span>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => setRefreshRequest(request => request + 1)}
+            disabled={modelStatus === 'checking'}
+          >
+            Check now
+          </button>
+        </div>
+      </section>
+
+      <div className="clinical-panel-subtle metadata-status-note mb-4" role="status">
+        <p><strong>Database: </strong>{databaseStatus === 'healthy' ? 'Available for account and assessment records.' : databaseStatus === 'checking' ? 'Checking the API readiness report…' : 'Unavailable. Sign-in, saved assessments, and review workflows may not work until storage is restored.'}</p>
+        <p><strong>Dataset metadata: </strong>{metadataStatus === 'connected'
+          ? 'Loaded from the analysis service.'
+          : loading
+            ? 'Loading model and dataset details…'
+            : 'Unavailable. Model health and dataset metadata are checked separately.'}</p>
       </div>
+
+      <details className="research-reference-panel mb-4">
+        <summary>
+          <span>
+            <span className="eyebrow-clinical">Evidence and limitations</span>
+            <strong>Research references &amp; current governance guidance</strong>
+            <span className="text-caption">What these sources support—and what they do not establish for this prototype.</span>
+          </span>
+          <span className="research-reference-count">{researchReferences.length} sources</span>
+        </summary>
+        <div className="research-reference-content">
+          <div className="research-principle-grid">
+            <article>
+              <h3>What the code uses</h3>
+              <p>A calibrated Random Forest over symptom-combination profiles. SHAP is cited as interpretability research, but per-assessment SHAP explanations are not implemented.</p>
+            </article>
+            <article>
+              <h3>What the data represents</h3>
+              <p>The Kaggle source is a small symptom-pattern dataset, not a verified cohort of 4,920 patients. Exact train/test profile overlap is measured; this app publishes no clinical performance claim.</p>
+            </article>
+            <article>
+              <h3>What governance standards mean here</h3>
+              <p>WHO, NIST, FDA, AES, and HIPAA sources inform design and risk questions. Citing them does not make this prototype clinically validated, FDA-authorized, AES-certified, or HIPAA-compliant.</p>
+            </article>
+          </div>
+          <ol className="research-reference-list">
+            {researchReferences.map(reference => (
+              <li key={reference.number}>
+                <span className="research-reference-number">{reference.number}</span>
+                <div>
+                  <a href={reference.href} target="_blank" rel="noreferrer" className="research-reference-title">
+                    {reference.title}<span className="sr-only"> (opens in a new tab)</span>
+                  </a>
+                  <p className="research-reference-citation">{reference.citation}</p>
+                  <p>{reference.relevance}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </details>
 
       {/* Dataset Inventory Cards */}
       <div className="grid-2 mb-6" style={{ gap: '1.25rem' }}>
@@ -185,8 +371,8 @@ function DatasetsContent() {
             </div>
           </div>
         ))}
-        {serviceStatus === 'unavailable' && (
-          <div className="clinical-panel-subtle">Dataset details are unavailable while the analysis service is offline.</div>
+        {metadataStatus === 'unavailable' && (
+          <div className="clinical-panel-subtle">Dataset details could not be loaded from the analysis service. The figures above remain blank instead of substituting unverified values.</div>
         )}
       </div>
 

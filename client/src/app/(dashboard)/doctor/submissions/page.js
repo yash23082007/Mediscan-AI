@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
+import { formatRelativeTime } from '@/lib/format'
 import {
   IconStethoscope,
   IconCheckCircle,
@@ -43,11 +44,9 @@ function SubmissionsContent() {
   }, [authLoading, loadSubmissions])
 
   const filterOptions = [
-    { key: '', label: 'All Submissions' },
-    { key: 'pending', label: 'Review Required' },
-    { key: 'approved', label: 'Doctor Verified' },
-    { key: 'corrected', label: 'Clinically Corrected' },
-    { key: 'overridden', label: 'Overridden' },
+    { key: '', label: 'All' },
+    { key: 'pending', label: 'Waiting' },
+    { key: 'reviewed', label: 'Reviewed' },
   ]
 
   return (
@@ -64,12 +63,13 @@ function SubmissionsContent() {
       </div>
 
       {/* Triage Filter Pills */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+      <div className="review-filter-group" role="group" aria-label="Filter cases by review status" style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
         {filterOptions.map((opt) => (
           <button
             key={opt.key}
             className={`btn btn-sm ${filter === opt.key ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setFilter(opt.key)}
+            aria-pressed={filter === opt.key}
             style={{ minHeight: '34px', fontSize: '0.8125rem' }}
           >
             {opt.label}
@@ -95,29 +95,30 @@ function SubmissionsContent() {
           <table className="clinical-table" role="table">
             <thead>
               <tr>
-                <th scope="col">Patient Identification</th>
-                <th scope="col">Demographic Profile</th>
-                <th scope="col">Primary Differential</th>
-                <th scope="col">Evidence Level</th>
-                <th scope="col">Triage Status</th>
-                <th scope="col">Intake Date</th>
-                <th scope="col" style={{ textAlign: 'right' }}>Review Action</th>
+                <th scope="col">Patient</th>
+                <th scope="col">Top estimate</th>
+                <th scope="col">Score</th>
+                <th scope="col">Priority</th>
+                <th scope="col">Review</th>
+                <th scope="col">Submitted</th>
+                <th scope="col" style={{ textAlign: 'right' }}>Open</th>
               </tr>
             </thead>
             <tbody>
               {submissions.map((sub, i) => {
                 const conf = sub.conditions?.[0]?.confidence ?? sub.confidence_scores?.[0]?.confidence ?? null
                 const isPending = sub.status === 'pending'
-                const isApproved = sub.status === 'approved'
+                const isReviewed = ['approved', 'corrected', 'overridden'].includes(sub.status)
+                const urgency = sub.triage_level || 'routine'
 
                 return (
                   <tr key={sub.id || i}>
-                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                      {sub.patient_name}
-                    </td>
-                    <td className="text-caption text-tabular">
-                      {sub.patient_age ? `${sub.patient_age} yrs` : '—'} • {sub.patient_gender || '—'}
-                      {sub.patient_weight && ` • ${sub.patient_weight} kg`}
+                    <td>
+                      <strong style={{ color: 'var(--text-primary)' }}>{sub.patient_name}</strong>
+                      <div className="text-caption text-tabular">
+                        {sub.patient_age ? `${sub.patient_age} yrs` : '—'} · {sub.patient_gender || '—'}
+                        {sub.patient_weight && ` · ${sub.patient_weight} kg`}
+                      </div>
                     </td>
                     <td style={{ fontWeight: 500 }}>
                       {sub.conditions?.[0]?.name || 'Assessment'}
@@ -128,15 +129,17 @@ function SubmissionsContent() {
                       </span>
                     </td>
                     <td>
-                      <span className={`triage-tier-badge ${isApproved ? 'routine' : isPending ? 'moderate' : 'urgent'}`}>
-                        {isApproved ? 'Verified' : isPending ? 'Review Required' : sub.status}
+                      <span className={`triage-tier-badge ${urgency === 'emergency' || urgency === 'urgent' ? 'urgent' : urgency === 'routine' ? 'routine' : 'moderate'}`}>
+                        {urgency.charAt(0).toUpperCase() + urgency.slice(1)}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`triage-tier-badge ${isReviewed ? 'routine' : 'moderate'}`}>
+                        {isReviewed ? 'Reviewed' : isPending ? 'Waiting' : sub.status}
                       </span>
                     </td>
                     <td className="text-caption text-tabular">
-                      {new Date(sub.created_at).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric'
-                      })}
+                      {formatRelativeTime(sub.created_at)}
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <Link
@@ -144,7 +147,7 @@ function SubmissionsContent() {
                         className="btn btn-primary btn-sm"
                         style={{ minHeight: '32px' }}
                       >
-                        Clinical Review
+                        Open
                       </Link>
                     </td>
                   </tr>

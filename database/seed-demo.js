@@ -1,105 +1,46 @@
-/**
- * MediscanAI — Runtime seed script
- * Seeds one visibly synthetic local admin with a random password.
- *
- * Usage: after starting local PostgreSQL, run `node database/seed-demo.js`.
- */
-const { createRequire } = require('module');
-const crypto = require('crypto');
-const path = require('path');
-const fs = require('fs');
-const serverRequire = createRequire(path.resolve(__dirname, '../server/package.json'));
-const { Pool } = serverRequire('pg');
-const bcrypt = serverRequire('bcryptjs');
-
-serverRequire('dotenv').config({ path: path.resolve(__dirname, '../.env') });
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT, 10) || 5432,
-  database: process.env.DB_NAME || 'medical_diagnosis',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres123',
-});
-
-const generatePassword = () => crypto.randomBytes(8).toString('base64url').slice(0, 12);
-
-async function ensureSyntheticColumn() {
-  await pool.query('ALTER TABLE doctors ADD COLUMN IF NOT EXISTS is_synthetic BOOLEAN NOT NULL DEFAULT FALSE');
-  console.log('Synthetic-account marker is ready');
-}
-
-async function seedQuestions() {
-  const seedPath = path.resolve(__dirname, 'seed.sql');
-  const seed = fs.readFileSync(seedPath, 'utf8');
-  await pool.query(seed);
-  console.log('Question bank seeded');
-}
-
-async function seedDemoAccounts() {
-  const account = {
-    name: 'Synthetic Local Admin',
-    email: 'demo-admin@local.invalid',
-    specialization: 'Demo administration',
-    role: 'admin',
-  };
-
-  await pool.query(`
-    UPDATE doctors
-    SET is_synthetic = TRUE, is_verified = FALSE, license_number = NULL
-    WHERE email IN (
-      'sarah.mitchell@hospital.com',
-      'james.rodriguez@hospital.com',
-      'emily.chen@hospital.com'
-    )
-  `);
-
-  const password = process.env.DEMO_ADMIN_PASSWORD || generatePassword();
-  if (process.env.DEMO_ADMIN_PASSWORD && password.length < 16) {
-    throw new Error('DEMO_ADMIN_PASSWORD must be at least 16 characters long');
-  }
-  const hash = await bcrypt.hash(password, 12);
-  await pool.query(
-    `INSERT INTO doctors (name, email, password_hash, specialization, license_number, role, is_verified, is_synthetic)
-     VALUES ($1, $2, $3, $4, NULL, $5, TRUE, TRUE)
-     ON CONFLICT (email) DO UPDATE
-     SET name = EXCLUDED.name, password_hash = EXCLUDED.password_hash,
-         specialization = EXCLUDED.specialization, is_verified = TRUE, is_synthetic = TRUE`,
-    [account.name, account.email, hash, account.specialization, account.role]
-  );
-
-  console.log('\nSynthetic local admin credentials (save these; the password is shown only once):\n');
-  console.log('-'.repeat(70));
-  if (process.env.CI === 'true') {
-    console.log(`  ${account.role.toUpperCase().padEnd(7)} ${account.email.padEnd(35)} password supplied through the CI environment`);
-  } else {
-    console.log(`  ${account.role.toUpperCase().padEnd(7)} ${account.email.padEnd(35)} ${password}`);
-  }
-  console.log('-'.repeat(70));
-  if (process.env.CI !== 'true') {
-    console.log('\nThis password is not stored anywhere else. Save it now.\n');
-  }
-}
+/** Seed the questionnaire and one synthetic local administrator. */
+const path = require('node:path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+const bcrypt = require('../server/node_modules/bcryptjs');
+const { connectDatabase, collection, closeDatabase } = require('../server/src/config/database');
+const { seedQuestionnaire } = require('../server/scripts/initialize-database');
+const { randomUUID } = require('node:crypto');
 
 async function main() {
-  try {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('Demo seeding is disabled in production');
-    }
-    console.log('MediscanAI: seeding local demo data...\n');
-
-    await ensureSyntheticColumn();
-    await seedQuestions();
-    await seedDemoAccounts();
-
-    console.log('Local demo data seeded successfully.\n');
-  } catch (err) {
-    console.error('Seed failed:', err.message);
-    process.exitCode = 1;
-  } finally {
-    await pool.end();
+  if (process.env.NODE_ENV === 'production') throw new Error('Demo seeding is disabled in production');
+  const password = process.env.DEMO_ADMIN_PASSWORD;
+  if (!password || password.length < 16) {
+    throw new Error('Set DEMO_ADMIN_PASSWORD to a private value of at least 16 characters before seeding the demo clinician.');
   }
+
+  await connectDatabase();
+  await seedQuestionnaire();
+  const now = new Date();
+  await collection('users').updateOne(
+    { email: 'demo-admin@local.invalid' },
+    {
+      $set: {
+        name: 'Synthetic Local Admin',
+        email: 'demo-admin@local.invalid',
+        password_hash: await bcrypt.hash(password, 12),
+        specialization: 'Demo administration',
+        license_number: null,
+        role: 'admin',
+        is_verified: true,
+        is_synthetic: true,
+        is_active: true,
+        updated_at: now
+      },
+      $setOnInsert: { _id: randomUUID(), created_at: now }
+    },
+    { upsert: true }
+  );
+  console.log('Questionnaire data and the synthetic local administrator are ready. Password was not printed.');
 }
 
-main();
+main()
+  .catch(() => {
+    console.error('MongoDB demo seeding failed. Check MONGODB_URI and the required environment settings.');
+    process.exitCode = 1;
+  })
+  .finally(closeDatabase);

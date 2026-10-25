@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
+import { formatDate } from '@/lib/format'
 import {
   IconCaduceus,
   IconStethoscope,
@@ -15,32 +16,17 @@ import {
   IconHelpCircle
 } from '@/components/Icons'
 import ClinicalDisclaimer from '@/components/ClinicalDisclaimer'
-import EmergencyNotice from '@/components/EmergencyNotice'
 
 function EvidenceIndicator({ confidence }) {
-  const pct = Math.round(confidence * 100)
-  let label = 'Preliminary Model Estimate'
-  let tier = 'moderate'
-
-  if (confidence >= 0.75) {
-    label = 'Higher Model Estimate'
-    tier = 'routine'
-  } else if (confidence >= 0.45) {
-    label = 'Moderate Model Estimate'
-    tier = 'moderate'
+  if (typeof confidence !== 'number' || !Number.isFinite(confidence)) {
+    return <p className="text-caption">Added by clinician. No model score.</p>
   }
+  const pct = Math.round(confidence * 100)
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.375rem' }}>
-        <span className={`triage-tier-badge ${tier}`}>
-          {label}
-        </span>
-        <span className="text-caption text-tabular" style={{ fontSize: '0.75rem' }}>
-          ({pct}% model estimate)
-        </span>
-      </div>
-      <div className="evidence-bar" style={{ maxWidth: '180px' }}>
+      <p className="text-caption text-tabular" style={{ marginBottom: '0.375rem' }}>Experimental model estimate: {pct}%</p>
+      <div className="evidence-bar" style={{ maxWidth: '180px' }} aria-hidden="true">
         <div
           className="evidence-bar-fill"
           style={{
@@ -60,16 +46,20 @@ function DiagnosisContent() {
   const [diagnosis, setDiagnosis] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showTechnicalWeights, setShowTechnicalWeights] = useState(false)
+  const [diagnosisError, setDiagnosisError] = useState('')
 
   const loadDiagnosis = useCallback(async () => {
     try {
+      setDiagnosisError('')
       let url = '/diagnoses/latest'
       if (diagnosisId) url = `/diagnoses/${diagnosisId}`
       const res = await authFetch(url)
       const data = await res.json()
+      if (!res.ok && res.status !== 404) throw new Error(data.error || 'Assessment could not be loaded')
       setDiagnosis(data.diagnosis)
     } catch (err) {
       console.error('Failed to load diagnosis record:', err)
+      setDiagnosisError('We could not load this assessment. Check your connection and try again.')
     } finally {
       setLoading(false)
     }
@@ -92,6 +82,15 @@ function DiagnosisContent() {
   }
 
   if (!diagnosis) {
+    if (diagnosisError) {
+      return (
+        <div className="clinical-panel-subtle text-center" style={{ maxWidth: '600px', margin: '3rem auto', padding: '3rem 2rem' }} role="alert">
+          <h2 className="heading-md mb-2">Assessment unavailable</h2>
+          <p className="text-secondary mb-4">{diagnosisError}</p>
+          <button className="btn btn-primary" onClick={() => { setLoading(true); loadDiagnosis() }}>Try again</button>
+        </div>
+      )
+    }
     return (
       <div className="clinical-panel-subtle text-center" style={{ maxWidth: '600px', margin: '3rem auto', padding: '3rem 2rem' }}>
         <IconStethoscope size={32} color="var(--clinical-teal)" style={{ margin: '0 auto 1rem' }} />
@@ -121,6 +120,16 @@ function DiagnosisContent() {
 
   return (
     <div className="animate-calm-fade" style={{ maxWidth: '820px', margin: '0 auto' }}>
+      {triage?.urgency_level === 'urgent' || triage?.urgency_level === 'emergency' ? (
+        <section className="clinical-alert clinical-alert-urgent mb-4" role="alert" aria-live="assertive">
+          <div>
+            <strong>{triage.title}</strong>
+            <p>{triage.guidance}</p>
+          </div>
+          <span className="triage-tier-badge urgent">{triage.urgency_level === 'emergency' ? 'Emergency' : 'Urgent'}</span>
+        </section>
+      ) : null}
+
       {/* Header & Verification Status */}
       <div style={{ marginBottom: '2rem' }}>
         <div className="eyebrow-clinical mb-1">Assessment Summary</div>
@@ -132,11 +141,7 @@ function DiagnosisContent() {
             <p className="text-caption mt-1">
               Assessment ID: <span className="text-tabular">{diagnosis.id?.slice(0, 8) || 'Current'}</span> • Recorded on{' '}
               <span className="text-tabular">
-                {diagnosis.created_at ? new Date(diagnosis.created_at).toLocaleDateString('en-US', {
-                  month: 'long',
-                  day: 'numeric',
-                  year: 'numeric'
-                }) : '—'}
+                {formatDate(diagnosis.created_at, { dateStyle: 'long' })}
               </span>
             </p>
           </div>
@@ -147,22 +152,24 @@ function DiagnosisContent() {
         </div>
       </div>
 
-      {/* Emergency Guidance Check */}
-      <EmergencyNotice className="mb-4" />
-
-      {(triage?.urgency_level === 'urgent' || triage?.urgency_level === 'emergency') && (
-        <section className="clinical-alert clinical-alert-urgent mb-4" role="alert" aria-live="assertive">
-          <div>
-            <strong>{triage.title}</strong>
-            <p>{triage.guidance}</p>
-          </div>
-          <span className="triage-tier-badge urgent">{triage.urgency_level === 'emergency' ? 'Emergency' : 'Urgent'}</span>
+      {diagnosis.review && (
+        <section className="clinical-panel-subtle mb-4" aria-labelledby="review-status-heading">
+          <h2 className="heading-sm mb-1" id="review-status-heading">A clinician reviewed this result</h2>
+          <p className="text-caption mb-2">
+            {diagnosis.review.reviewer_name ? `Reviewed by ${diagnosis.review.reviewer_name}` : 'Clinician review'}
+            {diagnosis.review.reviewed_at ? ` · ${formatDate(diagnosis.review.reviewed_at)}` : ''}
+          </p>
+          {diagnosis.review.final_conditions?.[0]?.name && diagnosis.review.final_conditions[0].name !== primaryCondition?.name && (
+            <p className="mb-2"><strong>Updated result:</strong> {diagnosis.review.final_conditions[0].name}</p>
+          )}
+          {diagnosis.review.notes && <p className="text-secondary">{diagnosis.review.notes}</p>}
         </section>
       )}
 
       {/* Primary Clinical Consideration Card */}
       {primaryCondition ? (
       <div className="triage-tier-card primary mb-4" style={{ padding: '2rem' }}>
+        <p className="text-caption mb-1">Possible match based on your answers</p>
         <div className="eyebrow-clinical mb-1" style={{ color: 'var(--clinical-teal)' }}>
           Model Estimate
         </div>
@@ -183,7 +190,7 @@ function DiagnosisContent() {
             marginBottom: '1rem'
           }}>
             <h3 className="heading-sm mb-1" style={{ fontSize: '0.875rem', color: 'var(--clinical-teal)' }}>
-              Pathological Description
+              About this condition
             </h3>
             <p className="text-secondary" style={{ fontSize: '0.875rem', lineHeight: 1.6 }}>
               {clinicalOverview}
@@ -223,7 +230,7 @@ function DiagnosisContent() {
             {differentialConditions.map((diff, i) => (
               <div key={i} className="clinical-card" style={{ padding: '1.25rem' }}>
                 <div className="text-caption" style={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Alternative Presentation #{i + 1}
+                  Also possible
                 </div>
                 <div style={{ fontSize: '1.0625rem', fontWeight: 600, color: 'var(--text-primary)', margin: '0.25rem 0 0.5rem' }}>
                   {diff.name}
@@ -244,32 +251,13 @@ function DiagnosisContent() {
         <div className="mb-6">
           <h2 className="heading-sm mb-3" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <IconShield size={18} color="var(--clinical-teal)" />
-            Clinical Safety & Recommended Care Steps
+            What you can do now
           </h2>
-          <div className="grid-2">
+          <ul className="precaution-list">
             {precautions.map((prec, i) => (
-              <div key={i} className="clinical-card" style={{ padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <div style={{
-                  width: '26px',
-                  height: '26px',
-                  borderRadius: '50%',
-                  background: 'var(--clinical-teal-subtle)',
-                  color: 'var(--clinical-teal)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 700,
-                  fontSize: '0.8125rem',
-                  flexShrink: 0
-                }}>
-                  {i + 1}
-                </div>
-                <span className="text-secondary" style={{ fontSize: '0.875rem', fontWeight: 500, textTransform: 'capitalize' }}>
-                  {prec}
-                </span>
-              </div>
+              <li key={i}>{prec}</li>
             ))}
-          </div>
+          </ul>
         </div>
       )}
 
@@ -278,7 +266,7 @@ function DiagnosisContent() {
         <div className="clinical-panel-subtle mb-4">
           <h2 className="heading-sm mb-2" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <IconFileText size={18} color="var(--clinical-teal)" />
-            Diagnostic Reasoning Summary
+            How the model got here
           </h2>
           <p className="text-secondary" style={{ fontSize: '0.875rem', lineHeight: 1.6 }}>
             {explanation}
@@ -298,7 +286,7 @@ function DiagnosisContent() {
               className="btn btn-ghost btn-sm"
               style={{ fontSize: '0.75rem', color: 'var(--clinical-teal)' }}
             >
-              {showTechnicalWeights ? 'Hide Technical Weights' : 'Show Technical Weights'}
+              {showTechnicalWeights ? 'Hide scores' : 'Show scores'}
             </button>
           </div>
 
@@ -330,7 +318,7 @@ function DiagnosisContent() {
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                       <span className="text-caption" style={{ fontSize: '0.75rem' }}>
-                        {isPositive ? 'Strong alignment' : 'Differential marker'}
+                        {isPositive ? 'Points toward this' : 'Points away from this'}
                       </span>
                       {showTechnicalWeights && (
                         <span className="text-caption text-tabular" style={{ fontSize: '0.75rem', minWidth: '42px', textAlign: 'right' }}>

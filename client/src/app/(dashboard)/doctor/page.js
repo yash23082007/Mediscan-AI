@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
+import { formatRelativeTime } from '@/lib/format'
 import {
   IconStethoscope,
   IconCheckCircle,
@@ -149,28 +150,29 @@ export default function DoctorDashboard() {
           <table className="clinical-table" role="table">
             <thead>
               <tr>
-                <th scope="col">Patient Identification</th>
-                <th scope="col">Demographics</th>
-                <th scope="col">Synthesized Differential</th>
-                <th scope="col">Evidence Level</th>
-                <th scope="col">Triage Status</th>
-                <th scope="col">Date</th>
-                <th scope="col" style={{ textAlign: 'right' }}>Clinical Action</th>
+                <th scope="col">Patient</th>
+                <th scope="col">Top estimate</th>
+                <th scope="col">Score</th>
+                <th scope="col">Priority</th>
+                <th scope="col">Review</th>
+                <th scope="col">Submitted</th>
+                <th scope="col" style={{ textAlign: 'right' }}>Open</th>
               </tr>
             </thead>
             <tbody>
               {recent.map((sub, i) => {
                 const conf = sub.conditions?.[0]?.confidence ?? sub.confidence_scores?.[0]?.confidence ?? null
                 const isPending = sub.status === 'pending'
-                const isApproved = sub.status === 'approved'
+                const isReviewed = ['approved', 'corrected', 'overridden'].includes(sub.status)
+                const urgency = sub.triage_level || 'routine'
 
                 return (
                   <tr key={sub.id || i}>
-                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                      {sub.patient_name}
-                    </td>
-                    <td className="text-caption text-tabular">
-                      {sub.patient_age ? `${sub.patient_age}y` : '—'} • {sub.patient_gender || '—'}
+                    <td>
+                      <strong style={{ color: 'var(--text-primary)' }}>{sub.patient_name}</strong>
+                      <div className="text-caption text-tabular">
+                      {sub.patient_age ? `${sub.patient_age} yrs` : '—'} · {sub.patient_gender || '—'}
+                      </div>
                     </td>
                     <td style={{ fontWeight: 500 }}>
                       {sub.conditions?.[0]?.name || 'Assessment'}
@@ -181,15 +183,18 @@ export default function DoctorDashboard() {
                       </span>
                     </td>
                     <td>
-                      <span className={`triage-tier-badge ${isApproved ? 'routine' : isPending ? 'moderate' : 'urgent'}`}>
-                        {isApproved ? 'Verified' : isPending ? 'Review Required' : sub.status}
+                      <span className={`triage-tier-badge ${urgency === 'emergency' || urgency === 'urgent' ? 'urgent' : urgency === 'routine' ? 'routine' : 'moderate'}`}>
+                        {['emergency', 'urgent'].includes(urgency) && <IconAlertTriangle size={14} aria-hidden="true" />}
+                        {urgency.charAt(0).toUpperCase() + urgency.slice(1)}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`triage-tier-badge ${isReviewed ? 'routine' : 'moderate'}`}>
+                        {isReviewed ? 'Reviewed' : isPending ? 'Waiting' : sub.status}
                       </span>
                     </td>
                     <td className="text-caption text-tabular">
-                      {new Date(sub.created_at).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric'
-                      })}
+                      {formatRelativeTime(sub.created_at)}
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <Link
@@ -197,7 +202,7 @@ export default function DoctorDashboard() {
                         className="btn btn-primary btn-sm"
                         style={{ minHeight: '32px' }}
                       >
-                        Evaluate &amp; Sign
+                        Open
                       </Link>
                     </td>
                   </tr>

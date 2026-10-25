@@ -19,7 +19,7 @@ const feedbackRoutes = require('./routes/feedback.routes');
 const { authenticate } = require('./middleware/auth');
 const { AppError, errorHandler } = require('./utils/errors');
 const { handleSseStream, initRealtimeListener } = require('./realtime');
-const { query } = require('./config/database');
+const { connectDatabase, checkDatabase } = require('./config/database');
 const { validateJwtSecrets } = require('./config/jwt');
 const { getEncryptionKey } = require('./config/encryption');
 const { AI_ENGINE_URL } = require('./config/ai-engine');
@@ -33,8 +33,8 @@ if (process.env.NODE_ENV === 'production') {
   if (!process.env.AI_ENGINE_URL) {
     throw new Error('FATAL: AI_ENGINE_URL must be configured in production');
   }
-  if (!process.env.DATABASE_URL) {
-    throw new Error('FATAL: DATABASE_URL must be configured in production');
+  if (!process.env.MONGODB_URI) {
+    throw new Error('FATAL: MONGODB_URI must be configured in production');
   }
   if (!process.env.CORS_ORIGIN) {
     throw new Error('FATAL: CORS_ORIGIN must be configured in production');
@@ -137,10 +137,9 @@ app.get('/api/health/ready', async (req, res) => {
   let database = 'unavailable';
 
   try {
-    await query('SELECT 1');
-    database = 'healthy';
-  } catch (error) {
-    console.warn(`Database readiness check failed: ${error.message}`);
+    database = await checkDatabase() ? 'healthy' : 'unavailable';
+  } catch {
+    database = 'unavailable';
   }
 
   try {
@@ -190,10 +189,17 @@ app.use('*', (req, res, next) => {
 app.use(errorHandler);
 
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
-    console.log(`[INFO] MediscanAI API running on port ${PORT} (${process.env.NODE_ENV || 'development'})`);
-    initRealtimeListener();
-  });
+  connectDatabase()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`[INFO] MediscanAI API running on port ${PORT} (${process.env.NODE_ENV || 'development'})`);
+        initRealtimeListener();
+      });
+    })
+    .catch(() => {
+      console.error('[FATAL] MongoDB connection failed; API startup aborted. Check MONGODB_URI and network access.');
+      process.exitCode = 1;
+    });
 }
 
 module.exports = app;

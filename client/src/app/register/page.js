@@ -12,6 +12,9 @@ function RegisterForm() {
   const [step, setStep] = useState(1)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [prototypeConsent, setPrototypeConsent] = useState(false)
   const [form, setForm] = useState({
     name: '', email: '', password: '', confirmPassword: '',
     age: '', gender: '', weight: '', height: '',
@@ -33,8 +36,8 @@ function RegisterForm() {
       setError('Passwords do not match.')
       return
     }
-    if (form.password.length < 8) {
-      setError('Password must be at least 8 characters long.')
+    if (form.password.length < 8 || !/[A-Z]/.test(form.password) || !/[a-z]/.test(form.password) || !/[0-9]/.test(form.password) || !/[^A-Za-z0-9]/.test(form.password)) {
+      setError('Use at least 8 characters, including an uppercase letter, lowercase letter, number, and symbol.')
       return
     }
     setStep(2)
@@ -43,6 +46,10 @@ function RegisterForm() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    if (!prototypeConsent) {
+      setError('Please confirm you understand this is a research prototype, not medical advice.')
+      return
+    }
     setLoading(true)
     try {
       await registerPatient({
@@ -157,34 +164,44 @@ function RegisterForm() {
 
               <div className="form-group">
                 <label className="form-label" htmlFor="reg-password">Password</label>
-                <input
-                  id="reg-password"
-                  type="password"
-                  className="form-input"
-                  placeholder="Minimum 8 characters"
-                  value={form.password}
-                  onChange={(e) => updateField('password', e.target.value)}
-                  required
-                  minLength={8}
-                  maxLength={128}
-                  autoComplete="new-password"
-                />
+                <div className="auth-password-row">
+                  <input
+                    id="reg-password"
+                    type={showPassword ? 'text' : 'password'}
+                    className="form-input"
+                    placeholder="8+ characters with a number and symbol"
+                    value={form.password}
+                    onChange={(e) => updateField('password', e.target.value)}
+                    required
+                    minLength={8}
+                    maxLength={128}
+                    autoComplete="new-password"
+                  />
+                  <button type="button" className="btn btn-ghost btn-sm" aria-pressed={showPassword} aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(value => !value)}>
+                    {showPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
 
               <div className="form-group">
                 <label className="form-label" htmlFor="reg-confirm">Confirm Password</label>
-                <input
-                  id="reg-confirm"
-                  type="password"
-                  className="form-input"
-                  placeholder="Re-enter password"
-                  value={form.confirmPassword}
-                  onChange={(e) => updateField('confirmPassword', e.target.value)}
-                  required
-                  minLength={8}
-                  maxLength={128}
-                  autoComplete="new-password"
-                />
+                <div className="auth-password-row">
+                  <input
+                    id="reg-confirm"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    className="form-input"
+                    placeholder="Re-enter password"
+                    value={form.confirmPassword}
+                    onChange={(e) => updateField('confirmPassword', e.target.value)}
+                    required
+                    minLength={8}
+                    maxLength={128}
+                    autoComplete="new-password"
+                  />
+                  <button type="button" className="btn btn-ghost btn-sm" aria-pressed={showConfirmPassword} aria-label={showConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'} onClick={() => setShowConfirmPassword(value => !value)}>
+                    {showConfirmPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
 
               <button type="submit" className="btn btn-primary btn-lg w-full mt-2" id="reg-next">
@@ -200,7 +217,7 @@ function RegisterForm() {
                     id="reg-age"
                     type="number"
                     className="form-input"
-                    placeholder="34"
+                    placeholder="Years"
                     value={form.age}
                     onChange={(e) => updateField('age', e.target.value)}
                     required
@@ -259,6 +276,8 @@ function RegisterForm() {
                 </div>
               </div>
 
+              <p className="text-caption mb-3">Age, sex/gender, allergies, and chronic conditions help tailor the question flow. Allergies and chronic conditions are encrypted before storage.</p>
+
               <div className="form-group">
                 <label className="form-label" htmlFor="reg-allergies">Known Allergies <span className="text-caption">(optional)</span></label>
                 <input
@@ -283,12 +302,12 @@ function RegisterForm() {
                 />
               </div>
 
-              {/* Informational consent notice */}
-              <div className="clinical-panel-subtle mb-3" style={{ padding: '0.875rem 1rem' }}>
-                <p className="text-caption" style={{ fontSize: '0.75rem', lineHeight: 1.5 }}>
-                  By registering, you acknowledge that MediscanAI is an informational triage and clinical decision-support tool. It does not replace clinical consultation with a healthcare provider.
-                </p>
-              </div>
+              <label className="clinical-panel-subtle mb-3" style={{ padding: '0.875rem 1rem', display: 'flex', alignItems: 'flex-start', gap: '0.625rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={prototypeConsent} onChange={event => setPrototypeConsent(event.target.checked)} required aria-describedby="prototype-consent-copy" style={{ marginTop: '0.2rem', accentColor: 'var(--clinical-teal)' }} />
+                <span id="prototype-consent-copy" className="text-caption" style={{ fontSize: '0.8125rem', lineHeight: 1.5 }}>
+                  I understand MediscanAI is a research prototype, not clinically validated, and does not provide medical advice or a diagnosis.
+                </span>
+              </label>
 
               <div style={{ display: 'flex', gap: '0.75rem' }}>
                 <button
