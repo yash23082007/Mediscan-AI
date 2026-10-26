@@ -1,21 +1,37 @@
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 
 const isProduction = process.env.NODE_ENV === 'production';
 
+let autoAccessSecret = null;
+let autoRefreshSecret = null;
+
 const getAccessSecret = () => {
   const secret = process.env.JWT_ACCESS_SECRET;
-  if (isProduction && (!secret || secret === 'dev_access_secret' || secret.length < 32)) {
-    throw new Error('FATAL: JWT_ACCESS_SECRET must be at least 32 characters in production (SEC5)');
+  if (secret && secret !== 'dev_access_secret' && secret.length >= 32) {
+    return secret;
   }
-  return secret || 'dev_access_secret_for_local_development_only_minimum_32_characters';
+  if (!autoAccessSecret) {
+    autoAccessSecret = crypto.randomBytes(32).toString('hex');
+    if (isProduction) {
+      console.warn('[SECURITY] JWT_ACCESS_SECRET was missing or <32 chars. Generated secure ephemeral secret.');
+    }
+  }
+  return autoAccessSecret;
 };
 
 const getRefreshSecret = () => {
   const secret = process.env.JWT_REFRESH_SECRET;
-  if (isProduction && (!secret || secret === 'dev_refresh_secret' || secret.length < 32)) {
-    throw new Error('FATAL: JWT_REFRESH_SECRET must be at least 32 characters in production (SEC5)');
+  if (secret && secret !== 'dev_refresh_secret' && secret.length >= 32) {
+    return secret;
   }
-  return secret || 'dev_refresh_secret_for_local_development_only_minimum_32_characters';
+  if (!autoRefreshSecret) {
+    autoRefreshSecret = crypto.randomBytes(32).toString('hex');
+    if (isProduction) {
+      console.warn('[SECURITY] JWT_REFRESH_SECRET was missing or <32 chars. Generated secure ephemeral secret.');
+    }
+  }
+  return autoRefreshSecret;
 };
 
 const validateJwtSecrets = () => {

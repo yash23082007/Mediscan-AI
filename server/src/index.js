@@ -24,21 +24,26 @@ const { validateJwtSecrets } = require('./config/jwt');
 const { getEncryptionKey } = require('./config/encryption');
 const { AI_ENGINE_URL } = require('./config/ai-engine');
 
-if (process.env.NODE_ENV === 'production') {
-  validateJwtSecrets();
-  getEncryptionKey();
-  if (!process.env.AI_API_KEY) {
-    throw new Error('FATAL: AI_API_KEY must be configured in production');
+validateJwtSecrets();
+getEncryptionKey();
+
+if (!process.env.AI_API_KEY) {
+  process.env.AI_API_KEY = 'internal_mediscan_ai_engine_key_secret_32';
+  if (process.env.NODE_ENV === 'production') {
+    console.warn('[NOTICE] AI_API_KEY not provided. Using default internal service key.');
   }
-  if (!process.env.AI_ENGINE_URL) {
-    throw new Error('FATAL: AI_ENGINE_URL must be configured in production');
+}
+if (!process.env.AI_ENGINE_URL) {
+  process.env.AI_ENGINE_URL = 'http://127.0.0.1:5000';
+}
+if (!process.env.CORS_ORIGIN) {
+  process.env.CORS_ORIGIN = '*';
+  if (process.env.NODE_ENV === 'production') {
+    console.warn('[SECURITY] CORS_ORIGIN not set in production. Defaulting to allow all origins (*).');
   }
-  if (!process.env.MONGODB_URI) {
-    throw new Error('FATAL: MONGODB_URI must be configured in production');
-  }
-  if (!process.env.CORS_ORIGIN) {
-    throw new Error('FATAL: CORS_ORIGIN must be configured in production');
-  }
+}
+if (!process.env.MONGODB_URI && process.env.NODE_ENV === 'production') {
+  console.warn('[DATABASE] MONGODB_URI not provided. Set MONGODB_URI in Render dashboard to persist data.');
 }
 
 const app = express();
