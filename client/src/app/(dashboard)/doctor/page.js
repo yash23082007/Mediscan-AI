@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
+import { useRealtimeSubscription } from '@/hooks/useRealtime'
 import { formatRelativeTime } from '@/lib/format'
 import {
   IconStethoscope,
@@ -31,6 +32,11 @@ export default function DoctorDashboard() {
     }
   }, [authFetch])
 
+  const { isConnected } = useRealtimeSubscription({
+    onCaseCreated: () => loadDashboard(),
+    onCaseReviewed: () => loadDashboard()
+  })
+
   useEffect(() => {
     if (authLoading || !user) return
     Promise.resolve().then(loadDashboard)
@@ -56,7 +62,14 @@ export default function DoctorDashboard() {
       {/* Clinician Masthead */}
       <div style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <div className="eyebrow-clinical mb-1">Clinical Oversight Portal</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '0.25rem' }}>
+            <span className="eyebrow-clinical" style={{ marginBottom: 0 }}>Clinical Oversight Portal</span>
+            {isConnected && (
+              <span className="badge badge-success" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.725rem', padding: '0.15rem 0.5rem', borderRadius: 999 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: 'currentColor', display: 'inline-block' }} /> Live Telemetry
+              </span>
+            )}
+          </div>
           <h1 className="editorial-heading-lg" style={{ fontSize: '1.875rem' }}>
             Physician Triage &amp; Review Workspace
           </h1>

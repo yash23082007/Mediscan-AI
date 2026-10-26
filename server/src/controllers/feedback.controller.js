@@ -103,6 +103,7 @@ const submitFeedback = async (req, res, next) => {
     broadcastCaseEvent({
       type: 'case_reviewed',
       case_id: diagnosisId,
+      patient_id: diagnosisDoc.patient_id,
       status: action === 'approve' ? 'approved' : action === 'override' ? 'overridden' : 'corrected',
       reviewer_id: doctorId,
       reviewed_at: result.created_at

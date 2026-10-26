@@ -177,8 +177,17 @@ export function AuthProvider({ children }) {
   )
 }
 
+const defaultAuthContext = {
+  user: null,
+  token: null,
+  loading: true,
+  login: async () => {},
+  registerPatient: async () => {},
+  logout: async () => {},
+  authFetch: async () => new Response()
+}
+
 export const useAuth = () => {
   const ctx = useContext(AuthContext)
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider')
-  return ctx
+  return ctx || defaultAuthContext
 }

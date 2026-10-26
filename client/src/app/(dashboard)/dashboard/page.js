@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
+import { useRealtimeSubscription } from '@/hooks/useRealtime'
 import { formatDate } from '@/lib/format'
 import {
   IconStethoscope,
@@ -44,6 +45,11 @@ export default function PatientDashboard() {
       setLoading(false)
     }
   }, [authFetch, patientId])
+
+  useRealtimeSubscription({
+    onCaseCreated: () => loadData(),
+    onCaseReviewed: () => loadData()
+  })
 
   useEffect(() => {
     if (authLoading || !patientId) return

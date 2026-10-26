@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/context/AuthContext'
+import { useRealtimeSubscription } from '@/hooks/useRealtime'
 import { formatDate } from '@/lib/format'
 import {
   IconActivity,
@@ -27,6 +28,11 @@ export default function AnalyticsPage() {
       setLoading(false)
     }
   }, [authFetch])
+
+  useRealtimeSubscription({
+    onCaseCreated: () => loadAnalytics(),
+    onCaseReviewed: () => loadAnalytics()
+  })
 
   useEffect(() => {
     if (authLoading) return

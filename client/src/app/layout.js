@@ -4,6 +4,9 @@ export const metadata = {
   title: 'MediscanAI — Symptom Intake Research Prototype',
   description: 'A research prototype for guided symptom intake and experimental model estimates. Not clinically validated.',
   keywords: 'symptom intake, research prototype, experimental health model',
+  icons: {
+    icon: '/favicon.ico',
+  },
 }
 
 export default function RootLayout({ children }) {

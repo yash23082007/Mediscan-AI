@@ -32,9 +32,15 @@ async function proxyRequest(request, { params }) {
     })
 
     const responseHeaders = new Headers()
-    for (const name of ['content-type', 'cache-control', 'etag', 'vary', 'x-request-id']) {
+    for (const name of ['content-type', 'cache-control', 'etag', 'vary', 'x-request-id', 'connection', 'x-accel-buffering']) {
       const value = upstream.headers.get(name)
       if (value) responseHeaders.set(name, value)
+    }
+    const contentType = upstream.headers.get('content-type') || ''
+    if (contentType.includes('text/event-stream')) {
+      responseHeaders.set('cache-control', 'no-cache, no-transform')
+      responseHeaders.set('connection', 'keep-alive')
+      responseHeaders.set('x-accel-buffering', 'no')
     }
     const cookies = upstream.headers.getSetCookie?.() || []
     for (const cookie of cookies) responseHeaders.append('set-cookie', cookie)

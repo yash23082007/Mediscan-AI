@@ -41,11 +41,26 @@ const handleSseStream = (req, res) => {
   res.write('event: connected\n');
   res.write(`data: ${JSON.stringify({ message: 'Real-time telemetry stream active', clientId })}\n\n`);
 
-  const heartbeat = setInterval(() => res.write(': ping\n\n'), 25000);
-  req.on('close', () => {
+  let cleanedUp = false;
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
     clearInterval(heartbeat);
     clients.delete(clientId);
-  });
+  };
+
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(': ping\n\n');
+    } catch {
+      cleanup();
+    }
+  }, 25000);
+
+  req.on('close', cleanup);
+  req.on('error', cleanup);
+  res.on('finish', cleanup);
+  res.on('error', cleanup);
 };
 
 module.exports = { initRealtimeListener, broadcastCaseEvent, handleSseStream, getActiveClientCount: () => clients.size };

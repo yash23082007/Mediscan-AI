@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
+import { useRealtimeSubscription } from '@/hooks/useRealtime'
 import { formatRelativeTime } from '@/lib/format'
 import {
   IconStethoscope,
@@ -38,6 +39,11 @@ function SubmissionsContent() {
     }
   }, [authFetch, filter])
 
+  const { isConnected } = useRealtimeSubscription({
+    onCaseCreated: () => loadSubmissions(),
+    onCaseReviewed: () => loadSubmissions()
+  })
+
   useEffect(() => {
     if (authLoading) return
     Promise.resolve().then(loadSubmissions)
@@ -53,7 +59,14 @@ function SubmissionsContent() {
     <div className="animate-calm-fade">
       {/* Header */}
       <div style={{ marginBottom: '1.75rem' }}>
-        <div className="eyebrow-clinical mb-1">Clinical Triage Registry</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '0.25rem' }}>
+          <span className="eyebrow-clinical" style={{ marginBottom: 0 }}>Clinical Triage Registry</span>
+          {isConnected && (
+            <span className="badge badge-success" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.725rem', padding: '0.15rem 0.5rem', borderRadius: 999 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: 'currentColor', display: 'inline-block' }} /> Live Queue
+            </span>
+          )}
+        </div>
         <h1 className="editorial-heading-lg" style={{ fontSize: '1.875rem' }}>
           Patient Assessment Queue
         </h1>
