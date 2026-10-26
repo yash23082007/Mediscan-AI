@@ -1,9 +1,8 @@
-﻿services:
+services:
   - type: web
     name: mediscan-api
-    runtime: node
-    buildCommand: npm ci --prefix server
-    startCommand: cd server && npm start
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     plan: free
     healthCheckPath: /api/health/ready
     envVars:
@@ -26,31 +25,4 @@
       - key: ENCRYPTION_KEY
         generateValue: true
       - key: AI_ENGINE_URL
-        fromService:
-          type: pserv
-          name: mediscan-ai-engine
-          property: hostport
-      - key: AI_API_KEY
-        fromService:
-          type: pserv
-          name: mediscan-ai-engine
-          envVarKey: AI_API_KEY
-
-  - type: pserv
-    name: mediscan-ai-engine
-    runtime: python
-    rootDir: ai-engine
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 30 --access-logfile - app:app
-    plan: 0.5c-512mb
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.11
-      - key: FLASK_ENV
-        value: production
-      - key: AI_API_KEY
-        generateValue: true
-      - key: MODEL_PATH
-        value: ./saved_models
-      - key: DATA_PATH
-        value: ./data
+        value: http://127.0.0.1:5000
