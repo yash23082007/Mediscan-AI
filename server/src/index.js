@@ -124,8 +124,21 @@ app.use(cookieParser());
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 // ============================================
-// HEALTH CHECK
+// ROOT & HEALTH CHECK
 // ============================================
+app.all('/', (req, res) => {
+  if (req.method === 'HEAD') return res.status(200).end();
+  res.status(200).json({
+    status: 'online',
+    service: 'MediscanAI Unified Engine & API',
+    version: '1.0.0',
+    endpoints: {
+      health: '/api/health',
+      ready: '/api/health/ready'
+    }
+  });
+});
+
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'healthy',
