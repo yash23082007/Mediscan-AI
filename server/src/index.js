@@ -194,17 +194,18 @@ app.use('*', (req, res, next) => {
 app.use(errorHandler);
 
 if (process.env.NODE_ENV !== 'test') {
-  connectDatabase()
-    .then(() => {
-      app.listen(PORT, () => {
-        console.log(`[INFO] MediscanAI API running on port ${PORT} (${process.env.NODE_ENV || 'development'})`);
-        initRealtimeListener();
-      });
-    })
-    .catch(() => {
-      console.error('[FATAL] MongoDB connection failed; API startup aborted. Check MONGODB_URI and network access.');
-      process.exitCode = 1;
-    });
+  app.listen(PORT, () => {
+    console.log(`[INFO] MediscanAI API running on port ${PORT} (${process.env.NODE_ENV || 'development'})`);
+    initRealtimeListener();
+
+    if (process.env.MONGODB_URI) {
+      connectDatabase()
+        .then(() => console.log('[DATABASE] MongoDB connected successfully.'))
+        .catch((err) => console.error(`[WARN] MongoDB initial connection attempt: ${err.message}`));
+    } else {
+      console.warn('[DATABASE] Notice: MONGODB_URI is not set yet. Configure MONGODB_URI in Render dashboard for full database operations.');
+    }
+  });
 }
 
 module.exports = app;
