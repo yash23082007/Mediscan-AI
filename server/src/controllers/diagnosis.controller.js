@@ -7,7 +7,6 @@ const { assessTriage } = require('../utils/triage');
 const { broadcastCaseEvent } = require('../realtime');
 const { createAuditLog } = require('../middleware/audit');
 const { AI_ENGINE_URL } = require('../config/ai-engine');
-const AI_API_KEY = process.env.AI_API_KEY;
 
 const createDiagnosis = async (req, res, next) => {
   try {
@@ -57,7 +56,8 @@ const createDiagnosis = async (req, res, next) => {
     } else {
       try {
         const headers = { 'Content-Type': 'application/json' };
-        if (AI_API_KEY) headers['X-API-Key'] = AI_API_KEY;
+        const aiApiKey = process.env.AI_API_KEY;
+        if (aiApiKey) headers['X-API-Key'] = aiApiKey;
         const aiResponse = await axios.post(`${AI_ENGINE_URL}/predict`, {
           patient: {
             age: patient.age,
@@ -161,7 +161,8 @@ const createDiagnosis = async (req, res, next) => {
 const getDatasetsInfo = async (req, res) => {
   try {
     const headers = {};
-    if (AI_API_KEY) headers['X-API-Key'] = AI_API_KEY;
+    const aiApiKey = process.env.AI_API_KEY;
+    if (aiApiKey) headers['X-API-Key'] = aiApiKey;
     const response = await axios.get(`${AI_ENGINE_URL}/datasets/info`, { headers, timeout: 5000 });
     res.json(response.data);
   } catch {

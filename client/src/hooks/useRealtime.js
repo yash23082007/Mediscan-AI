@@ -9,21 +9,21 @@ import { useAuth } from '@/context/AuthContext'
  */
 export function useRealtimeSubscription({ onCaseCreated, onCaseReviewed, onConnected } = {}) {
   const { token, user } = useAuth()
-  const [isConnected, setIsConnected] = useState(false)
+  const [connected, setConnected] = useState(false)
   const eventSourceRef = useRef(null)
 
   const handleCaseCreated = useRef(onCaseCreated)
-  handleCaseCreated.current = onCaseCreated
-
   const handleCaseReviewed = useRef(onCaseReviewed)
-  handleCaseReviewed.current = onCaseReviewed
-
   const handleConnected = useRef(onConnected)
-  handleConnected.current = onConnected
+
+  useEffect(() => {
+    handleCaseCreated.current = onCaseCreated
+    handleCaseReviewed.current = onCaseReviewed
+    handleConnected.current = onConnected
+  }, [onCaseCreated, onCaseReviewed, onConnected])
 
   useEffect(() => {
     if (!token || !user || typeof window === 'undefined') {
-      setIsConnected(false)
       return
     }
 
@@ -36,12 +36,12 @@ export function useRealtimeSubscription({ onCaseCreated, onCaseReviewed, onConne
       eventSourceRef.current = es
 
       es.addEventListener('open', () => {
-        if (isSubscribed) setIsConnected(true)
+        if (isSubscribed) setConnected(true)
       })
 
       es.addEventListener('connected', (e) => {
         if (!isSubscribed) return
-        setIsConnected(true)
+        setConnected(true)
         try {
           const payload = JSON.parse(e.data)
           handleConnected.current?.(payload)
@@ -71,11 +71,10 @@ export function useRealtimeSubscription({ onCaseCreated, onCaseReviewed, onConne
       })
 
       es.addEventListener('error', () => {
-        if (isSubscribed) setIsConnected(false)
+        if (isSubscribed) setConnected(false)
       })
     } catch (err) {
       console.warn('[SSE] EventSource connection attempt failed:', err)
-      setIsConnected(false)
     }
 
     return () => {
@@ -84,9 +83,9 @@ export function useRealtimeSubscription({ onCaseCreated, onCaseReviewed, onConne
         es.close()
         eventSourceRef.current = null
       }
-      setIsConnected(false)
+      setConnected(false)
     }
   }, [token, user])
 
-  return { isConnected }
+  return { isConnected: Boolean(token && user && connected) }
 }
