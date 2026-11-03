@@ -2,11 +2,16 @@ import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+def _resolve_path(value, default):
+    path = value or default
+    return path if os.path.isabs(path) else os.path.join(BASE_DIR, path)
+
+
 class Config:
     FLASK_ENV = os.getenv('FLASK_ENV', 'development')
     FLASK_PORT = int(os.getenv('FLASK_PORT') or os.getenv('PORT') or 5000)
-    MODEL_PATH = os.getenv('MODEL_PATH', os.path.join(BASE_DIR, 'saved_models'))
-    DATA_PATH = os.getenv('DATA_PATH', os.path.join(BASE_DIR, 'data'))
+    MODEL_PATH = _resolve_path(os.getenv('MODEL_PATH'), os.path.join(BASE_DIR, 'saved_models'))
+    DATA_PATH = _resolve_path(os.getenv('DATA_PATH'), os.path.join(BASE_DIR, 'data'))
     
     # Model configuration
     MODEL_FILE = os.path.join(MODEL_PATH, 'classifier.joblib')

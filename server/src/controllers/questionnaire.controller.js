@@ -130,10 +130,110 @@ const getSession = async (req, res, next) => {
       patient_id: req.user.id
     });
     if (!session) return res.status(404).json({ error: 'Session not found' });
-    res.json({ session: asRecord(session) });
+
+    const nodeCollection = collection('decision_tree_nodes');
+    const pathNodes = await nodeCollection.find({
+      code: { $in: session.decision_path || [] },
+      is_active: true
+    }).toArray();
+    const nodesByCode = new Map(pathNodes.map(node => [node.code, node]));
+    const history = (session.decision_path || []).map((code, index) => {
+      const node = nodesByCode.get(code);
+      if (!node) return null;
+      return {
+        question: {
+          id: String(node._id),
+          code: node.code,
+          question_text: node.question_text,
+          category: node.category,
+          question_type: node.question_type,
+          options: node.options
+        },
+        answer: session.responses?.[code],
+        count: index
+      };
+    }).filter(item => item && item.answer !== undefined);
+
+    const currentNode = session.current_node_code
+      ? await nodeCollection.findOne({ code: session.current_node_code, is_active: true })
+      : null;
+
+    res.json({
+      session: asRecord(session),
+      history,
+      question: currentNode ? {
+        id: String(currentNode._id),
+        code: currentNode.code,
+        question_text: currentNode.question_text,
+        category: currentNode.category,
+        question_type: currentNode.question_type,
+        options: currentNode.options
+      } : null
+    });
   } catch (error) {
     next(error);
   }
 };
 
-module.exports = { startQuestionnaire, getNextQuestion, getSession };
+const stepBack = async (req, res, next) => {
+  try {
+    const { sessionId, currentQuestionId } = req.body;
+    const patientId = req.user.id;
+    const sessionCollection = collection('questionnaire_responses');
+    const session = await sessionCollection.findOne({ _id: sessionId, patient_id: patientId });
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (session.completed) return res.status(400).json({ error: 'This questionnaire session is already completed' });
+    if (!currentQuestionId || session.current_node_code !== currentQuestionId) {
+      return res.status(409).json({ error: 'Question does not match the current questionnaire step' });
+    }
+
+    const decisionPath = session.decision_path || [];
+    if (decisionPath.length === 0) {
+      return res.status(400).json({ error: 'There is no previous question in this session' });
+    }
+
+    const previousCode = decisionPath[decisionPath.length - 1];
+    const previousNode = await collection('decision_tree_nodes').findOne({ code: previousCode, is_active: true });
+    if (!previousNode) return res.status(409).json({ error: 'The previous questionnaire step is unavailable' });
+
+    const responses = { ...(session.responses || {}) };
+    delete responses[previousCode];
+    const updatedPath = decisionPath.slice(0, -1);
+    const updated = await sessionCollection.findOneAndUpdate(
+      {
+        _id: sessionId,
+        patient_id: patientId,
+        completed: false,
+        current_node_code: currentQuestionId,
+        decision_path: decisionPath
+      },
+      {
+        $set: {
+          responses,
+          decision_path: updatedPath,
+          current_node_code: previousCode,
+          total_questions: Object.keys(responses).length
+        }
+      },
+      { returnDocument: 'after' }
+    );
+
+    if (!updated) return res.status(409).json({ error: 'This questionnaire step changed. Reload the session to continue.' });
+    res.json({
+      sessionId,
+      question: {
+        id: String(previousNode._id),
+        code: previousNode.code,
+        question_text: previousNode.question_text,
+        category: previousNode.category,
+        question_type: previousNode.question_type,
+        options: previousNode.options
+      },
+      answeredCount: updated.total_questions || 0
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { startQuestionnaire, getNextQuestion, getSession, stepBack };

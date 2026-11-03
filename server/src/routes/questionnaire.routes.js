@@ -6,7 +6,8 @@ const { auditLog } = require('../middleware/audit');
 const {
   startQuestionnaire,
   getNextQuestion,
-  getSession
+  getSession,
+  stepBack
 } = require('../controllers/questionnaire.controller');
 
 // All routes require authentication
@@ -17,6 +18,9 @@ router.post('/start', authorize(ROLES.PATIENT), auditLog('START_QUESTIONNAIRE', 
 
 // Get next adaptive question
 router.post('/next', authorize(ROLES.PATIENT), getNextQuestion);
+
+// Rewind one persisted step before allowing the patient to edit an earlier answer.
+router.post('/back', authorize(ROLES.PATIENT), stepBack);
 
 // Get session data
 router.get('/:sessionId', getSession);

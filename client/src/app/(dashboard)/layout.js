@@ -19,38 +19,60 @@ function DashboardNav() {
   const isClinician = user?.role === 'doctor' || user?.role === 'admin'
 
   return (
-    <header className="clinical-navbar" id="dashboard-nav" role="banner">
-      <div className="clinical-navbar-inner">
+    <header className="workspace-topbar" id="dashboard-nav" role="banner">
+      <div className="workspace-topbar-inner">
         <Link href="/" className="clinical-brand" aria-label="MediscanAI Home">
           <div className="clinical-brand-symbol" aria-hidden="true">
             <IconCaduceus size={18} color="#ffffff" />
           </div>
           <span>MediscanAI</span>
         </Link>
+        <p className="workspace-topbar-context">{isPatient ? 'Patient workspace' : 'Clinical review workspace'}</p>
+        <div className="workspace-topbar-account">
+          <span className="workspace-account-avatar" aria-hidden="true"><IconUser size={16} /></span>
+          <span className="workspace-account-name">{user?.name || 'User'}</span>
+          <span className="dashboard-role-badge">
+            {user?.role === 'doctor' ? 'Physician' : user?.role || 'Patient'}
+          </span>
+          <button onClick={logout} className="btn btn-ghost btn-sm workspace-signout">Sign Out</button>
+        </div>
+      </div>
+    </header>
+  )
+}
 
-        <nav className="clinical-nav-links" aria-label="Dashboard Navigation">
+function WorkspaceSidebar() {
+  const { user } = useAuth()
+  const pathname = usePathname()
+  const isPatient = user?.role === 'patient'
+  const isClinician = user?.role === 'doctor' || user?.role === 'admin'
+
+  return (
+    <aside className="workspace-sidebar" aria-label="Workspace navigation">
+      <p className="workspace-sidebar-label">{isPatient ? 'My care' : 'Clinical work'}</p>
+      <nav className="workspace-sidebar-nav" aria-label="Workspace">
           {isPatient && (
             <>
               <Link
                 href="/dashboard"
-                className={`clinical-nav-link ${pathname === '/dashboard' ? 'active' : ''}`}
+                className={`workspace-sidebar-link ${pathname === '/dashboard' ? 'active' : ''}`}
                 aria-current={pathname === '/dashboard' ? 'page' : undefined}
               >
-                Health Workspace
+                <IconActivity size={17} aria-hidden="true" /><span>Overview</span>
               </Link>
               <Link
                 href="/questionnaire"
-                className={`clinical-nav-link ${pathname === '/questionnaire' ? 'active' : ''}`}
+                className={`workspace-sidebar-link ${pathname === '/questionnaire' ? 'active' : ''}`}
                 aria-current={pathname === '/questionnaire' ? 'page' : undefined}
               >
-                New Assessment
+                <IconStethoscope size={17} aria-hidden="true" /><span>New assessment</span>
               </Link>
               <Link
                 href="/health-report"
-                className={`clinical-nav-link ${pathname === '/health-report' ? 'active' : ''}`}
+                className={`workspace-sidebar-link ${pathname === '/health-report' ? 'active' : ''}`}
                 aria-current={pathname === '/health-report' ? 'page' : undefined}
               >
-                Health Records
+                <IconFileText size={17} aria-hidden="true" /><span>Health records</span>
               </Link>
             </>
           )}
@@ -59,72 +81,41 @@ function DashboardNav() {
             <>
               <Link
                 href="/doctor"
-                className={`clinical-nav-link ${pathname === '/doctor' ? 'active' : ''}`}
+                className={`workspace-sidebar-link ${pathname === '/doctor' ? 'active' : ''}`}
                 aria-current={pathname === '/doctor' ? 'page' : undefined}
               >
-                Overview
+                <IconActivity size={17} aria-hidden="true" /><span>Overview</span>
               </Link>
               <Link
                 href="/doctor/submissions"
-                className={`clinical-nav-link ${pathname.startsWith('/doctor/submissions') ? 'active' : ''}`}
+                className={`workspace-sidebar-link ${pathname.startsWith('/doctor/submissions') ? 'active' : ''}`}
                 aria-current={pathname.startsWith('/doctor/submissions') ? 'page' : undefined}
               >
-                Patient Triage
+                <IconStethoscope size={17} aria-hidden="true" /><span>Patient triage</span>
               </Link>
               <Link
                 href="/doctor/analytics"
-                className={`clinical-nav-link ${pathname === '/doctor/analytics' ? 'active' : ''}`}
+                className={`workspace-sidebar-link ${pathname === '/doctor/analytics' ? 'active' : ''}`}
                 aria-current={pathname === '/doctor/analytics' ? 'page' : undefined}
               >
-                Clinical Metrics
+                <IconFileText size={17} aria-hidden="true" /><span>Clinical metrics</span>
               </Link>
             </>
           )}
 
           <Link
             href="/datasets"
-            className={`clinical-nav-link ${pathname === '/datasets' ? 'active' : ''}`}
+            className={`workspace-sidebar-link ${pathname === '/datasets' ? 'active' : ''}`}
             aria-current={pathname === '/datasets' ? 'page' : undefined}
           >
-            Clinical Datasets
+            <IconShield size={17} aria-hidden="true" /><span>Evidence & model</span>
           </Link>
-        </nav>
-
-        <div className="dashboard-user-actions" style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <div style={{
-              width: 28,
-              height: 28,
-              borderRadius: '50%',
-              background: 'var(--surface-subtle)',
-              border: '1px solid var(--border-subtle)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--text-secondary)'
-            }}>
-              <IconUser size={15} />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
-              <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                {user?.name || 'User'}
-              </span>
-              <span className="dashboard-role-badge">
-                {user?.role === 'doctor' ? 'Physician' : user?.role || 'Patient'}
-              </span>
-            </div>
-          </div>
-
-          <button
-            onClick={logout}
-            className="btn btn-ghost btn-sm"
-            style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}
-          >
-            Sign Out
-          </button>
-        </div>
-      </div>
-    </header>
+      </nav>
+      <section className="workspace-sidebar-note" aria-label="Research prototype notice">
+        <IconShield size={16} aria-hidden="true" />
+        <p>Research prototype<br /><span>Not for diagnosis or emergency care</span></p>
+      </section>
+    </aside>
   )
 }
 
@@ -188,19 +179,24 @@ function DashboardShell({ children }) {
   return (
     <>
       <DashboardNav />
-      <main className="page-wrapper">
-        <div className="container">
-          {children}
-        </div>
-      </main>
-      <footer className="clinical-footer">
-        <div className="clinical-footer-inner">
-          <ClinicalDisclaimer compact />
-          <div style={{ marginTop: '1.25rem', fontSize: '0.75rem', color: 'var(--text-caption)' }}>
-            MediscanAI Clinical Assessment & Triage System • Confidential Patient Record System
+      <div className="workspace-app-frame">
+        <WorkspaceSidebar />
+        <div className="workspace-app-column">
+          <main className="page-wrapper">
+            <div className="container">
+              {children}
+            </div>
+          </main>
+          <footer className="clinical-footer">
+            <div className="clinical-footer-inner">
+              <ClinicalDisclaimer compact />
+              <div style={{ marginTop: '1.25rem', fontSize: '0.75rem', color: 'var(--text-caption)' }}>
+                MediscanAI • Research workspace
+              </div>
+            </div>
+          </footer>
           </div>
-        </div>
-      </footer>
+      </div>
       <MobileBottomNav />
     </>
   )

@@ -287,5 +287,5 @@ def extract_symptoms():
         return jsonify({'error': 'Symptom parsing failed'}), 500
 
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5000))
+    port = Config.FLASK_PORT
     app.run(host='0.0.0.0', port=port, debug=False)

@@ -1,0 +1,7 @@
+MediScanAI local public-page walkthrough
+Captured landing, methodology/safety scroll, dataset transparency, sign-in, and registration screens.
+No account was created and no patient data was used.
+Browser page errors during capture: 3
+- Failed to load resource: the server responded with a status of 401 (Unauthorized)
+- Failed to load resource: the server responded with a status of 401 (Unauthorized)
+- Failed to load resource: the server responded with a status of 401 (Unauthorized)

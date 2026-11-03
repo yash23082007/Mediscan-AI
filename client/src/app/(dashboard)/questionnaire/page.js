@@ -14,8 +14,9 @@ import ClinicalDisclaimer from '@/components/ClinicalDisclaimer'
 import EmergencyNotice from '@/components/EmergencyNotice'
 
 export default function QuestionnairePage() {
-  const { authFetch, loading: authLoading } = useAuth()
+  const { authFetch, loading: authLoading, user } = useAuth()
   const router = useRouter()
+  const activeSessionKey = user?.id ? `mediscan-active-questionnaire:${user.id}` : null
   const [sessionId, setSessionId] = useState(null)
   const [currentQuestion, setCurrentQuestion] = useState(null)
   const [selectedAnswer, setSelectedAnswer] = useState(null)
@@ -29,43 +30,78 @@ export default function QuestionnairePage() {
   const [error, setError] = useState('')
   const [showStartEmergencyNotice, setShowStartEmergencyNotice] = useState(true)
 
+  const requestDiagnosis = useCallback(async (targetSessionId) => {
+    if (!targetSessionId) return
+    setDiagnosisLoading(true)
+    setError('')
+    try {
+      const res = await authFetch('/diagnoses', {
+        method: 'POST',
+        body: JSON.stringify({ questionnaire_id: targetSessionId })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Clinical analysis is unavailable')
+      if (activeSessionKey) window.sessionStorage.removeItem(activeSessionKey)
+      router.push(`/diagnosis?id=${data.diagnosis?.id}`)
+    } catch (err) {
+      console.error('Diagnosis synthesis error:', err)
+      setError(err.message || 'Clinical analysis is temporarily unavailable. Your responses are saved; please retry shortly.')
+    } finally {
+      setDiagnosisLoading(false)
+    }
+  }, [activeSessionKey, authFetch, router])
+
   const startQuestionnaire = useCallback(async () => {
     try {
+      const savedSessionId = activeSessionKey
+        ? window.sessionStorage.getItem(activeSessionKey)
+        : null
+
+      if (savedSessionId) {
+        const savedResponse = await authFetch(`/questionnaire/${savedSessionId}`)
+        const savedData = await savedResponse.json().catch(() => null)
+        if (savedResponse.ok && savedData?.session) {
+          setSessionId(savedSessionId)
+          setAnsweredHistory(savedData.history || [])
+          setAnsweredCount(savedData.session.total_questions || savedData.history?.length || 0)
+          setShowStartEmergencyNotice(false)
+
+          if (savedData.session.completed) {
+            setCompleted(true)
+            setLoading(false)
+            await requestDiagnosis(savedSessionId)
+            return
+          }
+
+          if (savedData.question) {
+            setCurrentQuestion(savedData.question)
+            return
+          }
+        } else if (savedResponse.status >= 500) {
+          throw new Error('Your saved assessment could not be loaded. Please try again without starting a new one.')
+        }
+
+        window.sessionStorage.removeItem(activeSessionKey)
+      }
+
       const res = await authFetch('/questionnaire/start', { method: 'POST' })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Assessment could not be started')
       setSessionId(data.sessionId)
       setCurrentQuestion(data.question)
+      if (activeSessionKey) window.sessionStorage.setItem(activeSessionKey, data.sessionId)
     } catch (err) {
       console.error('Questionnaire start failure:', err)
       setError('We could not start your assessment. Please check your connection and try again.')
     } finally {
       setLoading(false)
     }
-  }, [authFetch])
+  }, [activeSessionKey, authFetch, requestDiagnosis])
 
   useEffect(() => {
     if (authLoading) return
     Promise.resolve().then(startQuestionnaire)
   }, [authLoading, startQuestionnaire])
-
-  const requestDiagnosis = useCallback(async () => {
-    setDiagnosisLoading(true)
-    try {
-      const res = await authFetch('/diagnoses', {
-        method: 'POST',
-        body: JSON.stringify({ questionnaire_id: sessionId })
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Clinical analysis is unavailable')
-      router.push(`/diagnosis?id=${data.diagnosis?.id}`)
-    } catch (err) {
-      console.error('Diagnosis synthesis error:', err)
-      setCompleted(false)
-      setDiagnosisLoading(false)
-      setError(err.message || 'Clinical analysis is temporarily unavailable. Your responses are saved; please try again shortly.')
-    }
-  }, [authFetch, router, sessionId])
 
   const handleNext = useCallback(async () => {
     if (!currentQuestion) return
@@ -73,12 +109,6 @@ export default function QuestionnairePage() {
     const isMulti = currentQuestion.question_type === 'multiple_choice'
     const answer = isMulti ? selectedMultiple : selectedAnswer
     if (!answer || (Array.isArray(answer) && answer.length === 0)) return
-
-    // Save into history stack for step-back review
-    setAnsweredHistory(prev => [
-      ...prev,
-      { question: currentQuestion, answer, count: answeredCount }
-    ])
 
     setSubmitting(true)
     setError('')
@@ -97,8 +127,12 @@ export default function QuestionnairePage() {
 
       if (data.completed) {
         setCompleted(true)
-        await requestDiagnosis()
+        await requestDiagnosis(sessionId)
       } else {
+        setAnsweredHistory(prev => [
+          ...prev,
+          { question: currentQuestion, answer, count: answeredCount }
+        ])
         setCurrentQuestion(data.question)
         setAnsweredCount(data.answeredCount || answeredCount + 1)
         setSelectedAnswer(null)
@@ -112,24 +146,38 @@ export default function QuestionnairePage() {
     }
   }, [answeredCount, authFetch, currentQuestion, requestDiagnosis, selectedAnswer, selectedMultiple, sessionId])
 
-  function handleBack() {
-    if (answeredHistory.length === 0) return
+  const handleBack = useCallback(async () => {
+    if (answeredHistory.length === 0 || !currentQuestion || submitting) return
     const prevItem = answeredHistory[answeredHistory.length - 1]
-    const updatedHistory = answeredHistory.slice(0, -1)
+    setSubmitting(true)
+    setError('')
+    try {
+      const res = await authFetch('/questionnaire/back', {
+        method: 'POST',
+        body: JSON.stringify({ sessionId, currentQuestionId: currentQuestion.code })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not return to the previous question')
 
-    setAnsweredHistory(updatedHistory)
-    setCurrentQuestion(prevItem.question)
-    setAnsweredCount(prevItem.count)
+      setAnsweredHistory(prev => prev.slice(0, -1))
+      setCurrentQuestion(data.question)
+      setAnsweredCount(data.answeredCount ?? prevItem.count)
 
-    const isMulti = prevItem.question.question_type === 'multiple_choice'
-    if (isMulti) {
-      setSelectedMultiple(Array.isArray(prevItem.answer) ? prevItem.answer : [prevItem.answer])
-      setSelectedAnswer(null)
-    } else {
-      setSelectedAnswer(prevItem.answer)
-      setSelectedMultiple([])
+      const isMulti = prevItem.question.question_type === 'multiple_choice'
+      if (isMulti) {
+        setSelectedMultiple(Array.isArray(prevItem.answer) ? prevItem.answer : [prevItem.answer])
+        setSelectedAnswer(null)
+      } else {
+        setSelectedAnswer(prevItem.answer)
+        setSelectedMultiple([])
+      }
+    } catch (err) {
+      console.error('Questionnaire back-navigation failure:', err)
+      setError(err.message || 'We could not return to the previous question. Your saved responses are unchanged.')
+    } finally {
+      setSubmitting(false)
     }
-  }
+  }, [answeredHistory, authFetch, currentQuestion, sessionId, submitting])
 
   const toggleMultiple = useCallback((value) => {
     setSelectedMultiple(prev =>
@@ -193,6 +241,19 @@ export default function QuestionnairePage() {
     )
   }
 
+  if (completed && error && !diagnosisLoading) {
+    return (
+      <div className="clinical-card-elevated text-center" style={{ maxWidth: '560px', margin: '4rem auto', padding: '2.5rem 2rem' }} role="alert">
+        <IconAlertTriangle size={28} color="var(--triage-moderate)" />
+        <h1 className="heading-md" style={{ marginTop: '1rem' }}>Your responses are saved</h1>
+        <p className="text-secondary" style={{ margin: '0.75rem auto 1.5rem', maxWidth: '48ch' }}>{error}</p>
+        <button className="btn btn-primary" onClick={() => requestDiagnosis(sessionId)}>
+          Retry assessment summary
+        </button>
+      </div>
+    )
+  }
+
   if (completed || diagnosisLoading) {
     return (
       <div className="flex justify-center items-center" style={{ minHeight: '60vh' }} role="status" aria-live="polite">
@@ -244,6 +305,7 @@ export default function QuestionnairePage() {
           {answeredHistory.length > 0 && (
             <button
               onClick={handleBack}
+              disabled={submitting}
               className="btn btn-ghost btn-sm"
               style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.25rem 0.5rem' }}
               title="Return to previous question to modify your response"

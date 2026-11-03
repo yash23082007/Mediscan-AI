@@ -1,0 +1,8 @@
+End-to-end synthetic patient walkthrough
+Final route after sign-in: /dashboard
+Synthetic account only; no real patient data. A local test account and assessment remain in the isolated QA database.
+Journey: landing → registration → workspace → adaptive assessment (including Back and refresh) → saved summary → sign out → sign back in.
+JavaScript page errors: 0
+HTTP responses >= 400: 2
+- 401 http://127.0.0.1:3000/api/auth/refresh
+- 401 http://127.0.0.1:3000/api/auth/refresh

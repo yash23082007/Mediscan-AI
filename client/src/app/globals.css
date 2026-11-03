@@ -941,6 +941,175 @@ a:hover {
   align-items: center;
 }
 
+/* The signed-in product uses a persistent workspace rail; public and auth pages
+   retain the lighter editorial masthead above. */
+.workspace-topbar {
+  position: sticky;
+  z-index: 100;
+  top: 0;
+  height: 68px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(251, 250, 247, 0.96);
+  backdrop-filter: blur(14px);
+}
+
+.workspace-topbar-inner {
+  display: flex;
+  width: min(100%, 1440px);
+  height: 100%;
+  align-items: center;
+  gap: 1.25rem;
+  margin: 0 auto;
+  padding: 0 1.75rem;
+}
+
+.workspace-topbar .clinical-brand {
+  min-width: 226px;
+  font-family: var(--font-editorial);
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+
+.workspace-topbar-context {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+}
+
+.workspace-topbar-account {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-left: auto;
+}
+
+.workspace-account-avatar {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border: 1px solid var(--clinical-teal-border);
+  border-radius: 50%;
+  background: var(--clinical-teal-subtle);
+  color: var(--clinical-teal);
+}
+
+.workspace-account-name {
+  max-width: 13rem;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-app-frame {
+  display: grid;
+  width: min(100%, 1440px);
+  min-height: calc(100vh - 68px);
+  grid-template-columns: 226px minmax(0, 1fr);
+  margin: 0 auto;
+}
+
+.workspace-sidebar {
+  position: sticky;
+  top: 68px;
+  display: flex;
+  height: calc(100vh - 68px);
+  flex-direction: column;
+  padding: 2rem 1rem 1.5rem 1.25rem;
+  border-right: 1px solid var(--border-subtle);
+  background: #f7f6f1;
+}
+
+.workspace-sidebar-label {
+  margin: 0 0 0.75rem 0.7rem;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.workspace-sidebar-nav {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.workspace-sidebar-link {
+  position: relative;
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  font-weight: 550;
+  transition: background var(--duration-quick) var(--ease-calm), color var(--duration-quick) var(--ease-calm);
+}
+
+.workspace-sidebar-link:hover {
+  background: #ecece5;
+  color: var(--text-primary);
+}
+
+.workspace-sidebar-link.active {
+  background: #e5efeb;
+  color: var(--clinical-teal-active);
+  font-weight: 650;
+}
+
+.workspace-sidebar-link.active::before {
+  position: absolute;
+  width: 3px;
+  height: 24px;
+  margin-left: -0.7rem;
+  border-radius: 0 3px 3px 0;
+  background: var(--clinical-teal);
+  content: '';
+}
+
+.workspace-sidebar-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-top: auto;
+  padding: 0.85rem 0.7rem;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--clinical-sage);
+}
+
+.workspace-sidebar-note p {
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.workspace-sidebar-note span {
+  color: var(--text-muted);
+  font-size: 0.67rem;
+  font-weight: 450;
+}
+
+.workspace-app-column {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.workspace-app-column .page-wrapper {
+  flex: 1;
+  padding-top: 2rem;
+}
+
+.workspace-app-column .container {
+  max-width: 1120px;
+}
+
 .clinical-navbar-inner {
   max-width: 1160px;
   margin: 0 auto;
@@ -2035,6 +2204,32 @@ a:hover {
   color: var(--text-muted);
   font-size: 0.75rem;
   line-height: 1.5;
+}
+
+@media (max-width: 1024px) and (min-width: 769px) {
+  .workspace-app-frame { grid-template-columns: 196px minmax(0, 1fr); }
+  .workspace-topbar .clinical-brand { min-width: 196px; }
+  .workspace-sidebar { padding-inline: 0.75rem; }
+  .workspace-topbar-inner { padding-inline: 1.25rem; }
+}
+
+@media (max-width: 768px) {
+  .workspace-topbar { height: 60px; }
+  .workspace-topbar-inner { padding-inline: 1rem; }
+  .workspace-topbar .clinical-brand { min-width: 0; font-size: 1.2rem; }
+  .workspace-topbar-context,
+  .workspace-account-name,
+  .workspace-topbar-account .dashboard-role-badge { display: none; }
+  .workspace-account-avatar { width: 1.85rem; height: 1.85rem; }
+  .workspace-topbar-account { gap: 0.25rem; }
+  .workspace-signout { min-height: 40px; padding-inline: 0.6rem; }
+  .workspace-app-frame { display: block; min-height: calc(100vh - 60px); }
+  .workspace-sidebar { display: none; }
+  .workspace-app-column .page-wrapper { padding-top: 1.5rem; }
+  .workspace-app-column .clinical-footer { padding-bottom: 6.5rem; }
+  .mobile-bottom-nav a { min-height: 48px; align-content: center; }
+  .mobile-bottom-nav a > span { color: inherit; font-size: 0.68rem; line-height: 1.2; }
+  .mobile-bottom-nav a svg { width: 18px; height: 18px; }
 }
 
 @media (max-width: 960px) {
